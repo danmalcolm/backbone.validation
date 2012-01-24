@@ -1,0 +1,35 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "JSParse", ".", "{7453BF78-A331-4FCF-A3E8-ABB9C6FCD69B}"
+	ProjectSection(WebsiteProperties) = preProject
+		TargetFrameworkMoniker = ".NETFramework,Version%3Dv4.0"
+		Debug.AspNetCompiler.VirtualPath = "/JSParse"
+		Debug.AspNetCompiler.PhysicalPath = "..\JSParse\"
+		Debug.AspNetCompiler.TargetPath = "PrecompiledWeb\JSParse\"
+		Debug.AspNetCompiler.Updateable = "true"
+		Debug.AspNetCompiler.ForceOverwrite = "true"
+		Debug.AspNetCompiler.FixedNames = "false"
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.VirtualPath = "/JSParse"
+		Release.AspNetCompiler.PhysicalPath = "..\JSParse\"
+		Release.AspNetCompiler.TargetPath = "PrecompiledWeb\JSParse\"
+		Release.AspNetCompiler.Updateable = "true"
+		Release.AspNetCompiler.ForceOverwrite = "true"
+		Release.AspNetCompiler.FixedNames = "false"
+		Release.AspNetCompiler.Debug = "False"
+		VWDPort = "2361"
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7453BF78-A331-4FCF-A3E8-ABB9C6FCD69B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7453BF78-A331-4FCF-A3E8-ABB9C6FCD69B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
