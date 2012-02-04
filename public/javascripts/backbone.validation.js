@@ -2,6 +2,9 @@ Backbone.validation = {};
 
 Backbone.validation = (function () {
 
+	/* --------------------------------------------*/
+	// Utilities
+
 	// Utility check functions
 	var isNullOrUndefined = function (value) {
 		return _.isNull(value) || _.isUndefined(value);
@@ -24,15 +27,26 @@ Backbone.validation = (function () {
 		return asString(value).replace(/^\s+|\s+$/g, "");
 	};
 
-
+	/* --------------------------------------------*/
+	// Core validation functionality
 
 	// ModelValidator - validates at model level
-	var ModelValidator = function () {
+	// Constructor receives rules keyed by attr name in an object literal
+	// {
+	//	  attr1: rules.notNull(),
+	//	  attr2: rules.length( { min:2, max: 10 })
+	// }
+	var ModelValidator = function (config) {
 		this.attrValidators = [];
+		config || (config = {});
+		_.each(config, function (ruleBuilder, name) {
+			var attrValidator = new AttrValidator(name, ruleBuilder.rules);
+			this.attrValidators.push(attrValidator);
+		}, this);
 	};
 
 	_.extend(ModelValidator.prototype, {
-		// Validate all model attrs
+		// Validate entire model
 		validate: function (model) {
 			var results = _.map(this.attrValidators, function (attrValidator) {
 				return attrValidator.validate(model);
@@ -41,7 +55,7 @@ Backbone.validation = (function () {
 			var isValid = results.length === 0;
 			return { isValid: isValid, results: results };
 		},
-		// Just validate the supplied attributes
+		// Validate the specified attrs
 		validateAttrs: function (attrs) {
 			var results = _.map(attrs, function (value, name) {
 				var validator = _.find(this.attrValidators, function (v) { return v.name === name; });
@@ -50,21 +64,13 @@ Backbone.validation = (function () {
 			results = _.filter(results, function (r) { return r != null; });
 			var isValid = results.length === 0;
 			return { isValid: isValid, results: results };
-		},
-		attr: function (name) {
-			var attrValidator = _.find(this.attrValidators, function (v) { return v.name === name; });
-			if (!attrValidator) {
-				attrValidator = new AttrValidator(name);
-				this.attrValidators.push(attrValidator);
-			}
-			return attrValidator;
 		}
 	});
 
-	// Validates a model attribute (also contains rule configuration functionality)
-	var AttrValidator = function (name) {
+	// Validates an individual attribute using the specified rules
+	var AttrValidator = function (name, rules) {
 		this.name = name;
-		this.rules = [];
+		this.rules = rules;
 	};
 
 	_.extend(AttrValidator.prototype, {
@@ -78,16 +84,26 @@ Backbone.validation = (function () {
 			for (var i = 0, l = this.rules.length; i < l; i++) {
 				rule = this.rules[i];
 				if (!rule.isValid(value)) {
-					var message = rule.options.message || messageBuilder.createMessage(rule.options, context);
+					var message = rule.options.message || messageBuilder.createMessage(rule, context);
 					errors.push({ message: message, key: rule.key });
 				}
 			}
 			return errors.length === 0 ? null : { attr: context.attr, path: context.path, errors: errors };
-		},
+		}
+	});
+
+	// RuleBuilder - Used to configure rules
+	// RuleBuilders are immutable, with each method that adds a rule returning a new instance with the additional rule.
+	var RuleBuilder = function (rules) {
+		this.rules = rules || [];
+	};
+
+	_.extend(RuleBuilder.prototype, {
 		addRule: function (isValid, options, key) {
 			var rule = new Rule(isValid, options, key);
-			this.rules.push(rule);
-			return this;
+			var newRules = this.rules.slice();
+			newRules.push(rule);
+			return new RuleBuilder(newRules);
 		},
 		// value cannot be null or undefined
 		notNull: function (options) {
@@ -97,7 +113,7 @@ Backbone.validation = (function () {
 		},
 		// value cannot be null or undefined
 		range: function (options) {
-			var values = options.values || { };
+			var values = options.values || {};
 			return this.addRule(function (value) {
 				if (options.ignoreCase) {
 					return _.any(values, function (item) {
@@ -108,7 +124,7 @@ Backbone.validation = (function () {
 				}
 			}, options, "range");
 		},
-		// non-empty string value
+		// not null, not undefined, not-empty and not whitespace string value
 		notBlank: function (options) {
 			return this.addRule(function (value) {
 				return !isNullOrUndefined(value) && !_.isNull(value.toString().match(/\S/));
@@ -146,7 +162,9 @@ Backbone.validation = (function () {
 	};
 
 
+	/* --------------------------------------------*/
 	// Message display
+
 	var messageFormatUtility = {
 		singularOrPlural: function (value, singular, plural) {
 			return value == 1 ? singular : plural || singular + "s";
@@ -163,12 +181,13 @@ Backbone.validation = (function () {
 	};
 
 	_.extend(MessageBuilder.prototype, {
-		createMessage: function (ruleOptions, context) {
-			var key = ruleOptions.key || "";
+		createMessage: function (rule, context) {
+			var key = rule.key || "";
 			var item = this.templates[key] || this.templates["default"];
-			var templateContent = _.isFunction(item) ? item(ruleOptions) : item;
+			var templateContent = _.isFunction(item) ? item(rule.options) : item;
 			var template = this.templateCache["templateContent"] || (this.templateCache["templateContent"] = _.template(templateContent));
-			var data = _.extend({ options: ruleOptions, context: context }, messageFormatUtility);
+			// make data and methods on messageFormatUtility available to template code
+			var data = _.extend({ options: rule.options, context: context }, messageFormatUtility);
 			return template(data);
 		}
 	});
@@ -204,11 +223,39 @@ Backbone.validation = (function () {
 
 	var messageBuilder = new MessageBuilder(defaultMessageConfig);
 
+	/* --------------------------------------------*/
+	// Model extensions
+
+	var initValidator = function (target) {
+		if (!target.validator) {
+			var attrRules = {};
+			if (target.validation && target.validation.attrs) {
+				attrRules = target.validation.attrs;
+			}
+			target.validator = new ModelValidator(attrRules);
+		}
+		return target.validator;
+	};
+
+	var modelExtensions = {
+		validate: function (attrs) {
+			var validator = initValidator(this);
+			var result = attrs ? validator.validateAttrs(attrs) : validator.validate(this);
+			if (!result.isValid) {
+				return result;
+			}
+		}
+	};
+
+
+
 	return {
 		ModelValidator: ModelValidator,
 		configureMessages: function (messageConfig) {
 			messageBuilder = new MessageBuilder(messageConfig);
-		}
+		},
+		rules: new RuleBuilder(),
+		modelExtensions: modelExtensions
 	};
 
 })();

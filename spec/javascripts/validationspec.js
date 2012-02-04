@@ -1,22 +1,51 @@
 describe("model validation", function () {
 	var f = JSON.stringify; // format objects in messages
-	var ModelValidator = Backbone.validation.ModelValidator;
 
-	// TODO - mixin 
+	var ModelValidator = Backbone.validation.ModelValidator;
+	var rules = Backbone.validation.rules;
+
 	describe("model extensions", function () {
 
-		var TestModel = Backbone.Model.extend({
-			initValidator: function (validator) {
-				validator.attr("name").length({ min: 2, max: 5 });
+		var BaseModel = Backbone.Model.extend(Backbone.validation.modelExtensions);
+		var TestModel = BaseModel.extend({
+			validation: {
+				attrs: {
+					code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" })
+				},
+				instance: rules.check(function (model, context){ })
 			}
 		});
-
+		var model;
 		beforeEach(function () {
-
+			model = new TestModel();
 		});
 
-		it("should return result if not valid", function () {
+		it("should trigger error if invalid attribute is set", function () {
+			var validationResult = null;
+			model.bind("error", function (m, r) {
+				validationResult = r;
+			});
+			model.set({ code: "1" });
+			expect(validationResult).not.toBeNull();
+			var expectedResult = {
+				isValid: false,
+				results: [{ attr: "code", path: "code", errors: [{ message: "Between 2 and 5", key: "string-length"}]}]
+			};
+			expect(validationResult).toEqual(expectedResult);
+		});
 
+		it("should not trigger error if valid attribute set", function () {
+			var errored = false;
+			model.bind("error", function (m, r) {
+				errored = true;
+			});
+			model.set({ code: "1" });
+			expect(validationResult).not.toBeNull();
+			var expectedResult = {
+				isValid: false,
+				results: [{ attr: "code", path: "code", errors: [{ message: "Between 2 and 5", key: "string-length"}]}]
+			};
+			expect(validationResult).toEqual(expectedResult);
 		});
 
 	});
@@ -43,10 +72,11 @@ describe("model validation", function () {
 				}
 			});
 
-			validator = new Backbone.validation.ModelValidator();
-			validator.attr("code").length({ min: 2, max: 5, message: "Between 2 and 5" });
-			validator.attr("name").length({ min: 2, max: 5, message: "Between 2 and 5" });
-			validator.attr("description").notNull({ message: "Not null" });
+			validator = new ModelValidator({
+				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
+				name: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
+				description: rules.notNull({ message: "Not null" })
+			});
 		});
 
 		it("should be valid if single attr being tested is valid", function () {
@@ -66,11 +96,11 @@ describe("model validation", function () {
 
 		it("should describe each invalid attr", function () {
 			var result = validator.validateAttrs({ code: "123", name: "1", description: null });
-			expect(result.results).toEqual([ 
-				{ attr: "name", path: "name", errors: [ { message: "Between 2 and 5", key: "string-length" } ] },
-				{ attr: "description", path: "description", errors: [ { message: "Not null", key: "not-null" } ] } 
+			expect(result.results).toEqual([
+				{ attr: "name", path: "name", errors: [{ message: "Between 2 and 5", key: "string-length"}] },
+				{ attr: "description", path: "description", errors: [{ message: "Not null", key: "not-null"}] }
 			]);
-			
+
 		});
 
 	});
@@ -83,9 +113,9 @@ describe("model validation", function () {
 		var dave, mary, validator;
 
 		beforeEach(function () {
-			validator = new Backbone.validation.ModelValidator();
+			validator = new ModelValidator();
 			validator.attr("spouse").valid(function (child) {
-				child.attr("name")
+				child.attr("name");
 			});
 			dave = new Person({ firstName: "Dave", lastName: "Smith", gender: "male" });
 			mary = new Person({ firstName: "Mary", lastName: "Smith", gender: "female", spouse: dave });
@@ -105,14 +135,13 @@ describe("model validation", function () {
 		});
 	});
 
-	describe("attr validation rules", function () {
+	describe("validation rules", function () {
 
 		var TestModel = Backbone.Model.extend();
 
 		var model, validator;
 
 		beforeEach(function () {
-			validator = new Backbone.validation.ModelValidator();
 			model = new TestModel();
 
 			this.addMatchers({
@@ -138,9 +167,9 @@ describe("model validation", function () {
 					};
 					var messagesOk = true;
 					if (expectedMessages) {
-						if(result.results.length === 1) {
+						if (result.results.length === 1) {
 							var actualMessages = _.pluck(result.results[0].errors, "message");
-							messagesOk = _.isEqual(actualMessages,expectedMessages);
+							messagesOk = _.isEqual(actualMessages, expectedMessages);
 						} else {
 							messagesOk = false;
 						}
@@ -152,10 +181,10 @@ describe("model validation", function () {
 
 		describe("object attr rules", function () {
 
-			describe("not null with no custom message", function () {
+			describe("not null", function () {
 
 				beforeEach(function () {
-					validator.attr("name").notNull();
+					validator = new ModelValidator({ name: rules.notNull() });
 				});
 
 				it("null is invalid", function () {
@@ -171,14 +200,29 @@ describe("model validation", function () {
 				});
 
 				it("should use default message", function () {
-					expect(null).toBeInvalid();
+					expect(null).toBeInvalid(["Please supply a value"]);
+				});
+			});
+
+			describe("not null - custom message", function () {
+
+				beforeEach(function () {
+					validator = new ModelValidator({
+						name: rules.notNull({ message: "Value please!" })
+					});
+				});
+
+				it("should use default message", function () {
+					expect(null).toBeInvalid(["Value please!"]);
 				});
 			});
 
 			describe("range", function () {
 
 				beforeEach(function () {
-					validator.attr("name").range({values: ["male", "female"]});
+					validator = new ModelValidator({
+						name: rules.range({ values: ["male", "female"] })
+					});
 				});
 
 				it("null is invalid", function () {
@@ -201,7 +245,9 @@ describe("model validation", function () {
 			describe("range - ignore case", function () {
 
 				beforeEach(function () {
-					validator.attr("name").range({ values: ["male", "female"], ignoreCase: true });
+					validator = new ModelValidator({
+						name: rules.range({ values: ["male", "female"], ignoreCase: true })
+					});
 				});
 
 				it("expected values in any case are valid", function () {
@@ -220,9 +266,10 @@ describe("model validation", function () {
 		});
 
 		describe("string attr rules", function () {
+
 			describe("not blank", function () {
 				beforeEach(function () {
-					validator.attr("name").notBlank();
+					validator = new ModelValidator({ name: rules.notBlank() });
 				});
 
 				it("null is invalid", function () {
@@ -253,7 +300,7 @@ describe("model validation", function () {
 			describe("length - min only", function () {
 
 				beforeEach(function () {
-					validator.attr("name").length({ min: 2 });
+					validator = new ModelValidator({ name: rules.length({ min: 2 }) });
 				});
 
 				it("null is invalid", function () {
@@ -284,7 +331,7 @@ describe("model validation", function () {
 			describe("length - max only", function () {
 
 				beforeEach(function () {
-					validator.attr("name").length({ max: 5 });
+					validator = new ModelValidator({ name: rules.length({ max: 5 }) });
 				});
 
 				it("null is invalid", function () {
@@ -315,7 +362,7 @@ describe("model validation", function () {
 			describe("length - min only trimmed", function () {
 
 				beforeEach(function () {
-					validator.attr("name").length({ min: 2, trim: true });
+					validator = new ModelValidator({ name: rules.length({ min: 2, trim: true }) });
 				});
 
 				it("empty string is invalid", function () {
@@ -346,7 +393,9 @@ describe("model validation", function () {
 			describe("length - min and max trimmed", function () {
 
 				beforeEach(function () {
-					validator.attr("name").length({ min: 2, max: 5, trim: true });
+					validator = new ModelValidator({
+						name: rules.length({ min: 2, max: 5, trim: true })
+					});
 				});
 
 				it("empty string is invalid", function () {
@@ -395,9 +444,11 @@ describe("model validation", function () {
 			describe("custom check", function () {
 
 				beforeEach(function () {
-					validator.attr("name").check(function (value, context) {
-						return value.toString().indexOf("monkey") != -1;
-					}, { message: "Needs to contain the word monkey" });
+					validator = new ModelValidator({
+						name: rules.check(function (value, context) {
+							return value.toString().indexOf("monkey") != -1;
+						}, { message: "Needs to contain the word monkey" })
+					});
 				});
 
 				it("value not matching rule is invalid", function () {
@@ -409,10 +460,7 @@ describe("model validation", function () {
 				});
 			});
 		});
-
-
-
-
-
 	});
+
+
 });
