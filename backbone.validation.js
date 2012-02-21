@@ -31,25 +31,42 @@ Backbone.validation = (function () {
 	// Core validation functionality
 
 	// ModelValidator - validates at model level
-	// Constructor receives rules keyed by attr name in an object literal
+	// Rules configured by config passed to constructor, which contains an
+	// attributeRules object, containing rules keyed by attr name in an object literal
+	// and instanceRules, containing rules for the model itself
+	//
 	// {
+	//	attributeRules: {
 	//	  attr1: rules.notNull(),
 	//	  attr2: rules.length( { min:2, max: 10 })
-	// }
+	//	},
+	//	instanceRules: rules.check(function() { ... })
+	//}
 	var ModelValidator = function (config) {
-		this.attrValidators = [];
-		config || (config = {});
-		_.each(config, function (ruleBuilder, name) {
-			var attrValidator = new AttrValidator(name, ruleBuilder.rules);
-			this.attrValidators.push(attrValidator);
-		}, this);
+		this.validators = [];
+		this.initialize(config);
 	};
 
 	_.extend(ModelValidator.prototype, {
+		
+		initialize: function (config){
+			var validator;
+			config || (config = {});
+
+			_.each(config.attributeRules, function (ruleBuilder, name) {
+				validator = new Validator(name, function (target) { return target.get(name); }, ruleBuilder.rules);
+				this.validators.push(validator);
+			}, this);
+
+			if(config.instanceRules instanceof RuleBuilder) {
+				validator = new Validator("", function(target) { return target; }, config.instanceRules.rules);
+				this.validators.push(validator);
+			}
+		},
 		// Validate entire model
 		validate: function (model) {
-			var results = _.map(this.attrValidators, function (attrValidator) {
-				return attrValidator.validate(model);
+			var results = _.map(this.validators, function (validator) {
+				return validator.validate(model);
 			});
 			results = _.filter(results, function (r) { return r != null; });
 			var isValid = results.length === 0;
@@ -58,7 +75,7 @@ Backbone.validation = (function () {
 		// Validate the specified attrs
 		validateAttrs: function (attrs) {
 			var results = _.map(attrs, function (value, name) {
-				var validator = _.find(this.attrValidators, function (v) { return v.name === name; });
+				var validator = _.find(this.validators, function (v) { return v.name === name; });
 				return validator ? validator.validateValue({ attr: name, path: name }, value) : null;
 			}, this);
 			results = _.filter(results, function (r) { return r != null; });
@@ -67,15 +84,16 @@ Backbone.validation = (function () {
 		}
 	});
 
-	// Validates an individual attribute using the specified rules
-	var AttrValidator = function (name, rules) {
+	// Validates an individual object (model, collection or attribute value) using the specified rules
+	var Validator = function (name, getValue, rules) {
 		this.name = name;
+		this.getValue = getValue;
 		this.rules = rules;
 	};
 
-	_.extend(AttrValidator.prototype, {
-		validate: function (model) {
-			var value = model.get(this.name);
+	_.extend(Validator.prototype, {
+		validate: function (target) {
+			var value = this.getValue(target);
 			return this.validateValue({ attr: this.name, path: this.name }, value);
 		},
 		validateValue: function (context, value) {
@@ -224,20 +242,21 @@ Backbone.validation = (function () {
 	var messageBuilder = new MessageBuilder(defaultMessageConfig);
 
 	/* --------------------------------------------*/
-	// Model extensions
+	// Model extension s
 
 	var initValidator = function (target) {
 		if (!target.validator) {
-			var attrRules = {};
-			if (target.validation && target.validation.attrs) {
-				attrRules = target.validation.attrs;
-			}
-			target.validator = new ModelValidator(attrRules);
+			var config = {
+				attributeRules: target.attributeRules,
+				instanceRules: target.instanceRules
+			};
+			target.validator = new ModelValidator(config);
 		}
 		return target.validator;
 	};
-
-	var modelExtensions = {
+	
+	// The extension that is mixed in to Model to add validation functionality
+	var modelValidation = {
 		validate: function (attrs) {
 			var validator = initValidator(this);
 			var result = attrs ? validator.validateAttrs(attrs) : validator.validate(this);
@@ -255,7 +274,7 @@ Backbone.validation = (function () {
 			messageBuilder = new MessageBuilder(messageConfig);
 		},
 		rules: new RuleBuilder(),
-		modelExtensions: modelExtensions
+		modelValidation: modelValidation
 	};
 
 })();
