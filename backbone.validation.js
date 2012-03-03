@@ -32,11 +32,11 @@ Backbone.validation = (function () {
 
 	// ModelValidator - validates at model level
 	// Rules configured by config passed to constructor, which contains an
-	// attributeRules object, containing rules keyed by attr name in an object literal
+	// rules object, containing rules keyed by attr name in an object literal
 	// and instanceRules, containing rules for the model itself
 	//
 	// {
-	//	attributeRules: {
+	//	rules: {
 	//	  attr1: rules.notNull(),
 	//	  attr2: rules.length( { min:2, max: 10 })
 	//	},
@@ -53,7 +53,7 @@ Backbone.validation = (function () {
 			var validator;
 			config || (config = {});
 
-			_.each(config.attributeRules, function (ruleBuilder, name) {
+			_.each(config.rules, function (ruleBuilder, name) {
 				validator = new Validator(name, function (target) { return target.get(name); }, ruleBuilder.rules);
 				this.validators.push(validator);
 			}, this);
@@ -274,7 +274,7 @@ Backbone.validation = (function () {
 	var initValidator = function (target) {
 		if (!target.validator) {
 			var config = {
-				attributeRules: target.attributeRules,
+				rules: target.rules,
 				instanceRules: target.instanceRules
 			};
 			target.validator = new ModelValidator(config);

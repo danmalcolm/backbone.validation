@@ -4,18 +4,18 @@ describe("model validation", function () {
 	var ModelValidator = Backbone.validation.ModelValidator;
 	var rules = Backbone.validation.rules;
 
-	var createValidator = function (attributeRules) {
-		return new ModelValidator({ attributeRules: attributeRules });
+	var createValidator = function (ruleConfig) {
+		return new ModelValidator({ rules: ruleConfig });
 	};
 
 	describe("model validation extension", function () {
 
 		var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
 		var TestModel = BaseModel.extend({
-			attributeRules: {
-				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" })
-			},
-			instanceRules: rules.check(function () { return false; })
+			rules: {
+				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
+				self: rules.check(function () { return false; })
+			}
 		});
 		var model;
 		beforeEach(function () {
@@ -290,7 +290,7 @@ describe("model validation", function () {
 				valid(123, "number");
 
 				it("should use default message", function () {
-					expect(null).toBeInvalid(["Please supply a valid value"]);
+					expect(null).toBeInvalid(["Please supply a value"]);
 				});
 			});
 

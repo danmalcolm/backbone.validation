@@ -3,7 +3,7 @@
 var rules = Backbone.validation.rules;
 
 var User = Model.extend({
-	attributeRules: {
+	rules: {
 		email: rules.email({ trim: true }),
 		password: rules.length({ trim: true, min: 6, max: 20 })
 	},

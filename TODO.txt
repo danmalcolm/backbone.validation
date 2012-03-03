@@ -1,12 +1,18 @@
-﻿and / or
+﻿1. Combine OR
 
-rules.combine(rules.numeric(), rules.length({ min: 6, max: 8 }), { message: "asdfs" });
+rules.any(rules.email(), rules.length({ min: 6, max: 8 }), { message: "Username or password" }); - either combine messages or allow message to be defined
 
-special use of self to define rules on instance:
+2. Combine AND
+Allows multiple rules to be treated as a single error
+rules.combine(rules.numeric(), rules.length({ len: 6 }), { message: "Number 6 digits" })
+
+3. Add len to length options for exact length
+
+4. Special use of self to define rules on instance:
 
 var Model = Backbone.Model.extend({
 	rules: {
-		// special case, possible to if you have attr called "self", e.g. Backbone.validation.selfReferenceRuleProperty = "_self_"
+		// special case, if you have attr called "self", e.g. Backbone.validation.selfReferenceRulesProperty = "_self_"
 		self: rules.check(function() {
 
 		}),
@@ -15,6 +21,7 @@ var Model = Backbone.Model.extend({
 
 });
 
-simplify rules definition
+5. simplify rules definition, e.g. replace separate instanceRules and attrRules with rules
 
-define a rules intersecting attributes, so that we evaluate when a different attr changes, e.g. 
+6. define intersecting attributes, so that we evaluate when a different attr changes, e.g. sum of attr of models in a collection needs to add up to 10
+
