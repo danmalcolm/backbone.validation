@@ -29,11 +29,29 @@ describe("model validation", function () {
 			});
 			model.set({ code: "1" });
 			expect(validationResult).not.toBeNull();
-			var expectedResult = {
-				isValid: false,
-				results: [{ attr: "code", path: "code", errors: [{ message: "Between 2 and 5", key: "string-length"}]}]
-			};
-			expect(validationResult).toEqual(expectedResult);
+			var expected = [{ attr: "code", path: "code", errors: [{ message: "Between 2 and 5", key: "string-length"}]}];
+			expect(validationResult.invalidValues).toEqual(expected);
+		});
+
+		it("should not trigger error if invalid attribute is set silently", function () {
+			var errored = false;
+			model.bind("error", function (m, r) {
+				errored = true;
+			});
+			model.set({ code: "1" }, { silent: true });
+			expect(errored).toBeFalsy();
+		});
+
+
+		it("should be invalid validated after attribute is set silently", function () {
+			var errored = false;
+			model.bind("error", function (m, r) {
+				errored = true;
+			});
+			model.set({ code: "1" }, { silent: true });
+			expect(errored).toBeFalsy();
+			var result = model.validate();
+			expect(result).not.toBeNull();
 		});
 
 		it("should not trigger error if valid attribute set", function () {
@@ -96,9 +114,9 @@ describe("model validation", function () {
 				expect(result).toBeInvalid();
 			});
 
-			it("should describe each invalid attr", function () {
+			it("should describe each invalid value", function () {
 				var result = validator.validateAttrs({ code: "123", name: "1", description: null });
-				expect(result.results).toEqual([
+				expect(result.invalidValues).toEqual([
 						{ attr: "name", path: "name", errors: [{ message: "Between 2 and 5", key: "string-length"}] },
 						{ attr: "description", path: "description", errors: [{ message: "Not null", key: "not-null"}] }
 					]);
@@ -135,7 +153,7 @@ describe("model validation", function () {
 
 			it("should describe each invalid attr", function () {
 				var result = validator.validateAttrs({ code: "123", name: "1", description: null });
-				expect(result.results).toEqual([
+				expect(result.invalidValues).toEqual([
 						{ attr: "name", path: "name", errors: [{ message: "Between 2 and 5", key: "string-length"}] },
 						{ attr: "description", path: "description", errors: [{ message: "Not null", key: "not-null"}] }
 					]);
@@ -247,8 +265,8 @@ describe("model validation", function () {
 					};
 					var messagesOk = true;
 					if (expectedMessages) {
-						if (result.results.length === 1) {
-							var actualMessages = _.pluck(result.results[0].errors, "message");
+						if (result.invalidValues.length === 1) {
+							var actualMessages = _.pluck(result.invalidValues[0].errors, "message");
 							messagesOk = _.isEqual(actualMessages, expectedMessages);
 						} else {
 							messagesOk = false;
@@ -272,7 +290,7 @@ describe("model validation", function () {
 				valid(123, "number");
 
 				it("should use default message", function () {
-					expect(null).toBeInvalid(["Please supply a value"]);
+					expect(null).toBeInvalid(["Please supply a valid value"]);
 				});
 			});
 
@@ -374,6 +392,17 @@ describe("model validation", function () {
 				valid(["ab", "abc", "abcd", "abcde", "  AAAA   ", "AAAA   ", 12, 123, 1234, 12345]);
 			});
 
+			describe("email - trimmed", function () {
+
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.email({ trim: true })
+					});
+				});
+
+				invalid(["dan", "dan@", "dan@..com", "dan@.com", "", "dan@gmail.badtld" ]);
+				valid([" dan@gmail.com", " dan@gmail.com  ", "dan@gmail.com  ", "dan@gmail.asia", "dan@asdfsdf.museum", "dan@company.co.uk"]);
+			});
 			describe("custom check", function () {
 
 				beforeEach(function () {
@@ -384,8 +413,8 @@ describe("model validation", function () {
 					});
 				});
 
-				invalid("asdf","not matching rule");
-				valid("monkey man","matching rule");
+				invalid("asdf", "not matching rule");
+				valid("monkey man", "matching rule");
 			});
 		});
 	});

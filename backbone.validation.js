@@ -2,8 +2,8 @@ Backbone.validation = {};
 
 Backbone.validation = (function () {
 
-	/* --------------------------------------------*/
-	// Utilities
+	// Helpers
+	// -------
 
 	// Utility check functions
 	var isNullOrUndefined = function (value) {
@@ -27,8 +27,8 @@ Backbone.validation = (function () {
 		return asString(value).replace(/^\s+|\s+$/g, "");
 	};
 
-	/* --------------------------------------------*/
 	// Core validation functionality
+	// -------
 
 	// ModelValidator - validates at model level
 	// Rules configured by config passed to constructor, which contains an
@@ -48,8 +48,8 @@ Backbone.validation = (function () {
 	};
 
 	_.extend(ModelValidator.prototype, {
-		
-		initialize: function (config){
+
+		initialize: function (config) {
 			var validator;
 			config || (config = {});
 
@@ -58,8 +58,8 @@ Backbone.validation = (function () {
 				this.validators.push(validator);
 			}, this);
 
-			if(config.instanceRules instanceof RuleBuilder) {
-				validator = new Validator("", function(target) { return target; }, config.instanceRules.rules);
+			if (config.instanceRules instanceof RuleBuilder) {
+				validator = new Validator("", function (target) { return target; }, config.instanceRules.rules);
 				this.validators.push(validator);
 			}
 		},
@@ -69,8 +69,7 @@ Backbone.validation = (function () {
 				return validator.validate(model);
 			});
 			results = _.filter(results, function (r) { return r != null; });
-			var isValid = results.length === 0;
-			return { isValid: isValid, results: results };
+			return new Result(results);
 		},
 		// Validate the specified attrs
 		validateAttrs: function (attrs) {
@@ -79,11 +78,29 @@ Backbone.validation = (function () {
 				return validator ? validator.validateValue({ attr: name, path: name }, value) : null;
 			}, this);
 			results = _.filter(results, function (r) { return r != null; });
-			var isValid = results.length === 0;
-			return { isValid: isValid, results: results };
+			return new Result(results);
 		}
 	});
 
+	var Result = function (errors) {
+		this.invalidValues = errors;
+		this.isValid = errors.length === 0;
+	};
+	_.extend(Result.prototype, {
+		// Summary of result suitable for logging, alert during early development
+		getSummary: function () {
+			var message = "";
+			for (var i = 0, l = this.invalidValues.length; i < l; i++) {
+				var error = this.invalidValues[i];
+				message += error.attr + ":\n";
+				for (var j = 0, lj = error.errors.length; j < lj; j++) {
+					message += "- " + error.errors[j].message + "\n";
+				}
+				message += "\n";
+			}
+			return message;
+		}
+	});
 	// Validates an individual object (model, collection or attribute value) using the specified rules
 	var Validator = function (name, getValue, rules) {
 		this.name = name;
@@ -97,11 +114,12 @@ Backbone.validation = (function () {
 			return this.validateValue({ attr: this.name, path: this.name }, value);
 		},
 		validateValue: function (context, value) {
-			var rule;
+			var rule, isValid;
 			var errors = [];
 			for (var i = 0, l = this.rules.length; i < l; i++) {
 				rule = this.rules[i];
-				if (!rule.isValid(value)) {
+				isValid = rule.isValid(value);
+				if (!isValid) {
 					var message = rule.options.message || messageBuilder.createMessage(rule, context);
 					errors.push({ message: message, key: rule.key });
 				}
@@ -162,6 +180,12 @@ Backbone.validation = (function () {
 					&& (!options.max || value.length <= options.max);
 			}, options, "string-length");
 		},
+		email: function (options) {
+			return this.addRule(function (value) {
+				value = options.trim === true ? trimString(value) : asString(value);
+				return /^[A-Z0-9._%+-]+@(?:[A-Z0-9-]+\.)+([A-Z]{2,4}|museum)$/i.test(value);
+			}, options, "email");
+		},
 		// custom check using a callback function. The function will be invoked with
 		// 2 arguments (value, context) - the context contains the name of the attr
 		// and the parent model if available
@@ -203,7 +227,7 @@ Backbone.validation = (function () {
 			var key = rule.key || "";
 			var item = this.templates[key] || this.templates["default"];
 			var templateContent = _.isFunction(item) ? item(rule.options) : item;
-			var template = this.templateCache["templateContent"] || (this.templateCache["templateContent"] = _.template(templateContent));
+			var template = this.templateCache[templateContent] || (this.templateCache[templateContent] = _.template(templateContent));
 			// make data and methods on messageFormatUtility available to template code
 			var data = _.extend({ options: rule.options, context: context }, messageFormatUtility);
 			return template(data);
@@ -227,6 +251,9 @@ Backbone.validation = (function () {
 					template += " excluding whitespace at the start or end";
 				}
 				return template;
+			},
+			email: function (options) {
+				return "Please supply a valid email address";
 			},
 			"range": function (options) {
 				var template = "Please supply a valid value (<%= join(options.values, ', ', ' or ') %>)";
@@ -254,7 +281,7 @@ Backbone.validation = (function () {
 		}
 		return target.validator;
 	};
-	
+
 	// The extension that is mixed in to Model to add validation functionality
 	var modelValidation = {
 		validate: function (attrs) {
