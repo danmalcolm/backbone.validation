@@ -1,0 +1,20 @@
+﻿and / or
+
+rules.combine(rules.numeric(), rules.length({ min: 6, max: 8 }), { message: "asdfs" });
+
+special use of self to define rules on instance:
+
+var Model = Backbone.Model.extend({
+	rules: {
+		// special case, possible to if you have attr called "self", e.g. Backbone.validation.selfReferenceRuleProperty = "_self_"
+		self: rules.check(function() {
+
+		}),
+		name: rules.notNull(),
+	}
+
+});
+
+simplify rules definition
+
+define a rules intersecting attributes, so that we evaluate when a different attr changes, e.g. 
