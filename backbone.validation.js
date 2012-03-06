@@ -27,6 +27,10 @@ Backbone.validation = (function () {
 		return asString(value).replace(/^\s+|\s+$/g, "");
 	};
 
+	var isNumeric = function (value) {
+
+	};
+
 	// Core validation functionality
 	// -------
 
@@ -147,6 +151,15 @@ Backbone.validation = (function () {
 				return !isNullOrUndefined(value);
 			}, options, "not-null");
 		},
+		// all characters in value must be numeric
+		numeric: function (options) {
+			return this.addRule(function (value) {
+				if (isNullOrUndefined(value)) {
+					return true;
+				}
+				return /^\d*$/.test(value);
+			});
+		},
 		// value cannot be null or undefined
 		range: function (options) {
 			var values = options.values || {};
@@ -167,24 +180,78 @@ Backbone.validation = (function () {
 			}, options, "string-not-blank");
 		},
 		// string value of specified min and max length
+		// exact: exact string length
 		// min: minimum string length (inclusive) 
 		// max: maximum string length (inclusive) 
 		// trim: trim whitespace from start and end of value before testing length
 		length: function (options) {
+			options || (options = {});
 			return this.addRule(function (value) {
 				if (isNullOrUndefined(value)) {
 					return false;
 				}
 				value = options.trim === true ? trimString(value) : asString(value);
-				return (!options.min || value.length >= options.min)
-					&& (!options.max || value.length <= options.max);
+				if (!isNaN(options.exact)) {
+					return value.length === options.exact;
+				} else {
+					return (!options.min || value.length >= options.min)
+						&& (!options.max || value.length <= options.max);
+				}
 			}, options, "string-length");
 		},
+		// string value in valid email format
 		email: function (options) {
+			options || (options = {});
 			return this.addRule(function (value) {
-				value = options.trim === true ? trimString(value) : asString(value);
+				if (!_.isString(value))
+					return false;
+				if (options.trim)
+					value = trimString(value);
 				return /^[A-Z0-9._%+-]+@(?:[A-Z0-9-]+\.)+([A-Z]{2,4}|museum)$/i.test(value);
 			}, options, "email");
+		},
+		_parseAnyCombineArgs: function (args) {
+			var options;
+			var ruleSets = [];
+			for (var i = 0, l = args.length; i < l; i++) {
+				var arg = args[i];
+				if (arg instanceof RuleBuilder) {
+					ruleSets.push(arg.rules);
+				} else {
+					if (i === l - 1 && _.isObject(arg)) {
+						options = arg;
+					}
+				}
+			}
+			return { ruleSets: ruleSets, options: (options || {}) };
+		},
+		// Tests one or more sets of rules from a sequence of RuleBuilders. All
+		// rules in one of the sets must pass for validation to be successful.
+		any: function () {
+			var args = this._parseAnyCombineArgs(arguments);
+			var isValid = function (value, context) {
+				return _.any(args.ruleSets, function (rules) {
+					return _.all(rules, function (rule) {
+						return rule.isValid(value, context);
+					});
+				});
+			};
+			return this.addRule(isValid, args.options);
+		},
+		// Tests one or more sets of rules from a sequence of RuleBuilders. All
+		// rules in all of the sets must pass for validation to be successful.
+		// Compresses multiple sets of rules into a single rule (usually to
+		// show a single error message)
+		combine: function () {
+			var args = this._parseAnyCombineArgs(arguments);
+			var isValid = function (value, context) {
+				return _.all(args.ruleSets, function (rules) {
+					return _.all(rules, function (rule) {
+						return rule.isValid(value, context);
+					});
+				});
+			};
+			return this.addRule(isValid, args.options);
 		},
 		// custom check using a callback function. The function will be invoked with
 		// 2 arguments (value, context) - the context contains the name of the attr

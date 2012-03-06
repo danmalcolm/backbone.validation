@@ -302,7 +302,7 @@ describe("model validation", function () {
 					});
 				});
 
-				it("should use default message", function () {
+				it("should use custom message", function () {
 					expect(null).toBeInvalid(["Value please!"]);
 				});
 			});
@@ -348,6 +348,30 @@ describe("model validation", function () {
 				valid(["Dave", 123]);
 			});
 
+			describe("numeric", function () {
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.numeric()
+					});
+				});
+
+				valid([null,""],"null or empty values");
+				invalid(["abc", "1d", "\t\t"]);
+				valid(["12345", 123, "00000000000", 99]);
+			});
+
+			describe("length - exact", function () {
+
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.length({ exact: 5 })
+					});
+				});
+
+				invalid([null, "1234", 1234, "123456"]);
+				valid(["jjjjj", "abcde", 12345]);
+			});
+			
 			describe("length - min only", function () {
 
 				beforeEach(function () {
@@ -400,9 +424,10 @@ describe("model validation", function () {
 					});
 				});
 
-				invalid(["dan", "dan@", "dan@..com", "dan@.com", "", "dan@gmail.badtld" ]);
+				invalid(["dan", "dan@", "dan@..com", "dan@.com", "", "dan@gmail.badtld"]);
 				valid([" dan@gmail.com", " dan@gmail.com  ", "dan@gmail.com  ", "dan@gmail.asia", "dan@asdfsdf.museum", "dan@company.co.uk"]);
 			});
+
 			describe("custom check", function () {
 
 				beforeEach(function () {
@@ -415,6 +440,56 @@ describe("model validation", function () {
 
 				invalid("asdf", "not matching rule");
 				valid("monkey man", "matching rule");
+			});
+
+			describe("any", function () {
+
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.any(rules.numeric().length({ exact: 6 }), rules.length({ min: 10, max: 12 }),
+							{ message: "6 digit account number or username of 10 to 15 characters" })
+					});
+				});
+
+				invalid(["12345", "1234567", "asdfasdddadffffffffff.", "asd"]);
+				valid([123456, "123456", "chieftain600", "chieftain6"]);
+
+				it("should combine messages", function () {
+					// TODO: "message1 or message2"
+					
+				});
+			});
+
+			describe("any - custom message", function () {
+
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.any(rules.numeric().length({ exact: 6 }), rules.length({ min: 10, max: 12 }),
+							{ message: "6 digit account number or username of 10 to 15 characters" })
+					});
+				});
+
+				it("should use messages", function () {
+					expect("12").toBeInvalid(["6 digit account number or username of 10 to 15 characters"]);
+				});
+			});
+
+			describe("combine", function () {
+
+				beforeEach(function () {
+					validator = createValidator({
+						name: rules.combine(rules.numeric(), rules.length({ exact: 6 }), 
+							{ message: "6 digit account number" })
+					});
+				});
+
+				invalid(["12345", "1234567", "asdfas", null]);
+				valid([123456, "123456"]);
+
+				it("should combine messages", function () {
+					// TODO: "message1 and message2"
+					//expect(null).toBeInvalid([""]);
+				});
 			});
 		});
 	});
