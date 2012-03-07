@@ -4,8 +4,8 @@ describe("model validation", function () {
 	var ModelValidator = Backbone.validation.ModelValidator;
 	var rules = Backbone.validation.rules;
 
-	var createValidator = function (ruleConfig) {
-		return new ModelValidator({ rules: ruleConfig });
+	var createValidator = function (rulesConfig) {
+		return new ModelValidator({ rules: rulesConfig });
 	};
 
 	describe("model validation extension", function () {
@@ -43,7 +43,7 @@ describe("model validation", function () {
 		});
 
 
-		it("should be invalid validated after attribute is set silently", function () {
+		it("model should be invalid after attribute is set silently", function () {
 			var errored = false;
 			model.bind("error", function (m, r) {
 				errored = true;
@@ -122,6 +122,30 @@ describe("model validation", function () {
 					]);
 			});
 
+		});
+
+		describe("when validating model with instance-level rules", function () {
+
+			var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
+			var TestModel = BaseModel.extend({
+				rules: {
+					self: rules.check(function (model) {
+						return model.get("start") < model.get("end");
+					}, { message: "Start must be less than end" })
+				}
+			});
+
+			it("should be valid if rule passes", function () {
+				var model = new TestModel({ start: 1, end: 2 });
+				var result = model.validate();
+				expect(result).toBeUndefined();
+			});
+
+			it("should not be valid if rule does not pass", function () {
+				var model = new TestModel({ start: 3, end: 2 });
+				var result = model.validate();
+				expect(result).toBeInvalid();
+			});
 		});
 
 		describe("when validating model instance", function () {
@@ -355,7 +379,7 @@ describe("model validation", function () {
 					});
 				});
 
-				valid([null,""],"null or empty values");
+				valid([null, ""], "null or empty values");
 				invalid(["abc", "1d", "\t\t"]);
 				valid(["12345", 123, "00000000000", 99]);
 			});
@@ -371,7 +395,7 @@ describe("model validation", function () {
 				invalid([null, "1234", 1234, "123456"]);
 				valid(["jjjjj", "abcde", 12345]);
 			});
-			
+
 			describe("length - min only", function () {
 
 				beforeEach(function () {
@@ -456,7 +480,7 @@ describe("model validation", function () {
 
 				it("should combine messages", function () {
 					// TODO: "message1 or message2"
-					
+
 				});
 			});
 
@@ -478,7 +502,7 @@ describe("model validation", function () {
 
 				beforeEach(function () {
 					validator = createValidator({
-						name: rules.combine(rules.numeric(), rules.length({ exact: 6 }), 
+						name: rules.combine(rules.numeric(), rules.length({ exact: 6 }),
 							{ message: "6 digit account number" })
 					});
 				});

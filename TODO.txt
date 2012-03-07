@@ -1,12 +1,12 @@
-﻿1. Combine OR
+﻿1. DONE Combine OR
 
 rules.any(rules.email(), rules.length({ min: 6, max: 10 }), { message: "Username of 6 to 10 chars or email address" }); - either combine messages or allow message to be defined
 
-2. Combine AND
+2. DONE Combine AND
 Allows multiple rules to be treated as a single error
 rules.combine(rules.numeric(), rules.length({ len: 6 }), { message: "Number 6 digits" })
 
-3. Add exact property to length options for exact length
+3. DONE Add exact property to length options for exact length
 
 4. Special use of self property to define rules on instance:
 

@@ -31,6 +31,10 @@ Backbone.validation = (function () {
 
 	};
 
+	// Configuration
+	// -------
+	var config = { selfReferenceRuleKey: "self" };
+
 	// Core validation functionality
 	// -------
 
@@ -46,24 +50,33 @@ Backbone.validation = (function () {
 	//	},
 	//	instanceRules: rules.check(function() { ... })
 	//}
-	var ModelValidator = function (config) {
+	var ModelValidator = function (modelConfig) {
 		this.validators = [];
-		this.initialize(config);
+		this.initialize(modelConfig);
 	};
 
 	_.extend(ModelValidator.prototype, {
 
-		initialize: function (config) {
+		initialize: function (modelConfig) {
 			var validator;
-			config || (config = {});
+			modelConfig || (modelConfig = {});
 
-			_.each(config.rules, function (ruleBuilder, name) {
-				validator = new Validator(name, function (target) { return target.get(name); }, ruleBuilder.rules);
+			_.each(modelConfig.rules, function (ruleBuilder, key) {
+				var getTarget;
+				if (key === config.selfReferenceRuleKey) {
+					// rules apply to the model instance
+					getTarget = function (target) { return target; };
+					key = "";
+				} else {
+					// rules apply to attribute
+					getTarget = function (target) { return target.get(key); };
+				}
+				validator = new Validator(key, getTarget, ruleBuilder.rules);
 				this.validators.push(validator);
 			}, this);
 
-			if (config.instanceRules instanceof RuleBuilder) {
-				validator = new Validator("", function (target) { return target; }, config.instanceRules.rules);
+			if (modelConfig.instanceRules instanceof RuleBuilder) {
+				validator = new Validator("", function (target) { return target; }, modelConfig.instanceRules.rules);
 				this.validators.push(validator);
 			}
 		},
