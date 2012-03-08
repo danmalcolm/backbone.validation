@@ -21,6 +21,31 @@ var Model = Backbone.Model.extend({
 
 });
 
-5. define intersecting attributes, so that we evaluate what we need to test when a different attr changes, e.g. sum of attr of models in a collection needs to add up to 10
+5. define rules that apply to multiple attributes, so that we evaluate what we need to test when a 
+different attr changes, e.g. start attribute < end attribute
+- If at least one of the attrs is being set and all attrs are either being validated or are present on model (and valid), 
+then we evaluate rules
+- If not all attrs are present on model or they themselves are not valid, do not evaluate rule - additional 
+rules should be defined for each attr to ensure they are valid
+
+var Model = Backbone.Model.extend({
+	rules: {		
+		start: rules.numeric(),
+		end: rules.numeric(),
+		"start,end": rules.test(function(start,end) {
+			return start < end;
+		}, { message: "Cannot end before start")
+	}
+});
+
+oh yes....
+
+6. Dates
+
+birthday: rules.date("ddMMyyyy|ddMMyyyy")
+
+7. Numbers
+
+rules.number(type:"int" (decimal), min: 3, max: 4)
 
 6. Global configuration of common options, like trim
