@@ -8,17 +8,20 @@ describe("model validation", function () {
 		return new ModelValidator({ rules: rulesConfig });
 	};
 
+	// Model extended with modelValidation mixin
+	var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
+
+
 	describe("model validation extension", function () {
 
-		var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
-		var TestModel = BaseModel.extend({
+		var Model = BaseModel.extend({
 			rules: {
 				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" })
 			}
 		});
 		var model;
 		beforeEach(function () {
-			model = new TestModel();
+			model = new Model();
 		});
 
 		it("should trigger error if invalid attribute is set", function () {
@@ -40,7 +43,6 @@ describe("model validation", function () {
 			model.set({ code: "1" }, { silent: true });
 			expect(errored).toBeFalsy();
 		});
-
 
 		it("model should be invalid after attribute is set silently", function () {
 			var errored = false;
@@ -66,52 +68,69 @@ describe("model validation", function () {
 
 	describe("model validation", function () {
 
-		describe("when validating specific attributes", function () {
+		var model;
 
-			var validator;
+		beforeEach(function () {
 
-			beforeEach(function () {
-				validator = createValidator({
+			this.addMatchers({
+				// Validates an object specifying attribute values against the current model
+				toBeValid: function () {
+					var result = model.validate(this.actual);
+					this.message = function () {
+						return "Expected attributes to be valid (ie no result) but result was returned: \n" + f(result);
+					};
+					return !result;
+				},
+				// Validates an object specifying attribute values against the current model
+				toBeInvalid: function (invalidValues) {
+					var result = model.validate(this.actual);
+					this.message = function () {
+						return "Expected attributes to be invalid but no result was returned by model.validate";
+					};
+
+					this.message = function () {
+						var message = "Expected validation to fail";
+						if (invalidValues) {
+							message += " with invalid values: " + f(invalidValues);
+						}
+						message += " but invalid values were as follows: \n" + f(result.invalidValues);
+						return message;
+					};
+					return result
+						&& !result.isValid
+						&& (!invalidValues || _.isEqual(result.invalidValues, invalidValues));
+				}
+			});
+		});
+
+		describe("when validating attributes using model", function () {
+
+			var Model = BaseModel.extend({
+				rules: {
 					code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
 					name: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
 					description: rules.notNull({ message: "Not null" })
-				});
+				}
+			});
 
-				this.addMatchers({
-					toBeValid: function () {
-						var result = this.actual;
-						this.message = function () {
-							return "Expected result to be valid but result was as follows: \n" + f(result);
-						};
-						return result.isValid;
-					},
-					toBeInvalid: function () {
-						var result = this.actual;
-						this.message = function () {
-							return "Expected result to be invalid but result was as follows: \n" + f(result);
-						};
-						return !result.isValid;
-					}
-				});
+			beforeEach(function () {
+				model = new Model();
 			});
 
 			it("should be valid if single attr being tested is valid", function () {
-				var result = validator.validateAttrs({ code: "123" });
-				expect(result).toBeValid();
+				expect({ code: "123" }).toBeValid();
 			});
 
 			it("should be valid if all attrs being tested are valid", function () {
-				var result = validator.validateAttrs({ code: "123", name: "123" });
-				expect(result).toBeValid();
+				expect({ code: "123", name: "123" }).toBeValid();
 			});
 
-			it("should be invalid if one of all attrs being tested is invalid", function () {
-				var result = validator.validateAttrs({ code: "1", name: "123" });
-				expect(result).toBeInvalid();
+			it("should be invalid if one of multiple attrs being tested is invalid", function () {
+				expect({ code: "1", name: "123" }).toBeInvalid();
 			});
 
 			it("should describe each invalid value", function () {
-				var result = validator.validateAttrs({ code: "123", name: "1", description: null });
+				var result = model.validate({ code: "123", name: "1", description: null });
 				expect(result.invalidValues).toEqual([
 						{ attr: "name", path: "name", errors: [{ message: "Between 2 and 5", key: "string-length"}] },
 						{ attr: "description", path: "description", errors: [{ message: "Not null", key: "not-null"}] }
@@ -120,83 +139,173 @@ describe("model validation", function () {
 
 		});
 
-		describe("when creating model with validation rules", function () {
+		// Rules that validate single value
+		describe("when testing rules applied to single attribute values", function () {
 
-			var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
-			var TestModel = BaseModel.extend({
+			var Model = BaseModel.extend({
 				rules: {
-					self: rules.check(function (model) {
-						return model.get("start") < model.get("end");
-					}, { message: "Start must be less than end" }),
 					start: rules.numeric(),
 					end: rules.numeric()
 				}
 			});
 
 			beforeEach(function () {
-				this.addMatchers({
-					toBeValid: function () {
-						var model = this.actual;
-						var result = model.validate();
-						this.message = function () {
-							return "Expected model to be valid but result was as follows: \n" + f(result);
-						};
-						return !result;
-					},
-					toBeInvalid: function () {
-						var model = this.actual;
-						var result = model.validate();
-						this.message = function () {
-							return "Expected model to be invalid but it was valid";
-						};
-						return result;
-					}
+				model = new Model();
+			});
+
+			it("should be valid if single attribute specified is valid", function () {
+				expect({ start: 1 }).toBeValid();
+				expect({ end: 1 }).toBeValid();
+			});
+
+			it("should be valid if all attributes specified are valid", function () {
+				expect({ start: 1, end: 2 }).toBeValid();
+			});
+
+			it("should be invalid if one of many attributes specified is invalid", function () {
+				expect({ start: 1, end: "a" }).toBeInvalid();
+			});
+
+		});
+
+		describe("when testing rules that apply to multiple attributes", function () {
+
+			var tested;
+			var args;
+			var Model = BaseModel.extend({
+				rules: {
+					start: rules.numeric(),
+					end: rules.numeric(),
+					"start,end": rules.check(function (start, end) {
+						tested = true;
+						args = _.clone(arguments);
+						return start < end;
+					}, { message: "Start must be less than end" })
+				}
+			});
+
+			beforeEach(function () {
+				model = new Model();
+				tested = false;
+				args = [];
+			});
+
+			describe("rule application", function () {
+
+				it("should test rule and succeed if all values specified and they are valid", function () {
+					expect({ start: 1, end: 2 }).toBeValid();
+					expect(tested).toBeTruthy();
 				});
+
+				it("should test rule and fail if all values specified and they are invalid", function () {
+					expect({ start: 2, end: 1 }).toBeInvalid();
+					expect(tested).toBeTruthy();
+				});
+
+				it("should test rule and succeed if one value specified and other on model and they are valid", function () {
+					model.set("start", 1, { silent: true });
+					expect({ end: 2 }).toBeValid();
+					expect(tested).toBeTruthy();
+					expect(args[0]).toEqual(1);
+					expect(args[1]).toEqual(2);
+				});
+
+				it("should not test rule if no values specified", function () {
+					model.validate({ other: "" });
+					expect(tested).toBeFalsy();
+				});
+
+				it("should not test rule if only one of values is specified", function () {
+					model.validate({ start: 1 });
+					expect(tested).toBeFalsy();
+				});
+
+				it("should not test rule if no values specified, even if they exist on model", function () {
+					model.set({ start: 1, end: 2 }, { silent: true });
+					model.validate({ other: "" });
+					expect(tested).toBeFalsy();
+				});
+
+				it("should test and succeed if combination of specified value and model attribute satisfies rule", function () {
+					model.set("start", 1, { silent: true });
+					expect({ end: 2 }).toBeValid();
+					expect(tested).toBeTruthy();
+				});
+
+				// TODO - is this actually a good thing
+				it("should not test rule if one of values specified fails validation at individual attribute level", function () {
+					//					expect({ start: 1, end: "a" }).toBeInvalid();
+					//					expect(tested).toBeFalsy();
+				});
+
+				// TODO - is this actually a good thing
+				it("should not test rule if model attribute fails validation at individual attribute level", function () {
+					//					model.set("start", "a", { silent: true });
+					//					expect({ end: 3 }).toBeInvalid();
+					//					expect(tested).toBeFalsy();
+				});
+
 			});
 
-			it("should be valid if attributes satisfy all rules", function () {
-				expect(new TestModel({ start: "1", end: "2" })).toBeValid();
+			describe("test function invocation", function () {
+
+				it("should invoke rule function with values specified", function () {
+					expect({ start: 1, end: 2 }).toBeValid();
+					expect(tested).toBeTruthy();
+					expect(args[0]).toEqual(1);
+					expect(args[1]).toEqual(2);
+				});
+
+				it("should invoke function with combination of specified values and model attributes", function () {
+					model.set("start", 1, { silent: true });
+					expect({ end: 2 }).toBeValid();
+					expect(tested).toBeTruthy();
+					expect(args[0]).toEqual(1);
+					expect(args[1]).toEqual(2);
+				});
+
 			});
 
-			it("should be invalid if one of attributes is invalid", function () {
-				expect(new TestModel({ start: "1", end: "a" })).toBeInvalid();
+			describe("results", function () {
+
+				it("when validating all specified values should create error message for each attribute", function () {
+					expect({ start: 3, end: 1 }).toBeInvalid([
+						{ attr: "start", path: "start", errors: [{ message: "Start must be less than end", key: "check"}] },
+						{ attr: "end", path: "end", errors: [{ message: "Start must be less than end", key: "check"}] }
+					]);
+				});
+
+				it("when validating combination of specified values and model attributes should only create error message for specified attribute", function () {
+					model.set("start", 3, { silent: true });
+					expect({ end: 1 }).toBeInvalid([
+						{ attr: "end", path: "end", errors: [{ message: "Start must be less than end", key: "check"}] },
+					]);
+				});
+
 			});
-			
-			it("should be invalid if attributes do not satisfy model level (self) rule", function () {
-				expect(new TestModel({ start: "3", end: "1" })).toBeInvalid();
-			});
-			
 
 		});
 
 
 		describe("TODO nested object validation", function () {
 
-			var Person = Backbone.Model.extend();
+			var Order = BaseModel.extend({
 
-			var dave, mary, validator;
+			});
+
+			var Customer = BaseModel.extend({
+
+			});
+
+			var order;
 
 			beforeEach(function () {
-				validator = createValidator({
-					spouse: rules.valid({})
-				});
+				order = new Order();
 
-				dave = new Person({ firstName: "Dave", lastName: "Smith", gender: "male" });
-				mary = new Person({ firstName: "Mary", lastName: "Smith", gender: "female", spouse: dave });
+				
 			});
 
-			describe("when validating nested model", function () {
-
-				beforeEach(function () {
-					validator.attr("name").valid();
-				});
-
-			});
-
-
-			describe("nested collections", function () {
-
-			});
+			
 		});
 	});
 
@@ -205,9 +314,9 @@ describe("model validation", function () {
 
 	describe("validation rules", function () {
 
-		var TestModel = Backbone.Model.extend();
+		var TestModel = Backbone.Model.extend(Backbone.validation.modelValidation);
 
-		var model, validator;
+		var validator, model;
 
 		var valid = function (value, description) {
 			test(value, true, description);
@@ -252,8 +361,7 @@ describe("model validation", function () {
 
 			this.addMatchers({
 				toBeValid: function () {
-					model.set({ name: this.actual });
-					var result = validator.validate(model);
+					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model() });
 					this.message = function () {
 						return "Expected model to be valid but result was as follows: \n" + f(result);
 					};
@@ -261,8 +369,7 @@ describe("model validation", function () {
 
 				},
 				toBeInvalid: function (expectedMessages) {
-					model.set({ name: this.actual });
-					var result = validator.validate(model);
+					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model() });
 					this.message = function () {
 						var message = "Expected model to be invalid";
 						if (expectedMessages) {
