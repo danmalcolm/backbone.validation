@@ -120,7 +120,7 @@ describe("model validation", function () {
 
 		});
 
-		describe("when creating model with validation rules", function () {
+		describe("when creating model", function () {
 
 			var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
 			var TestModel = BaseModel.extend({
@@ -155,15 +155,15 @@ describe("model validation", function () {
 			});
 
 			it("should be valid if attributes satisfy all rules", function () {
-				expect(new TestModel({ start: "1", end: "2" })).toBeValid();
+				expect(new TestModel({ start: 1, end: 2 })).toBeValid();
 			});
 
 			it("should be invalid if one of attributes is invalid", function () {
-				expect(new TestModel({ start: "1", end: "a" })).toBeInvalid();
+				expect(new TestModel({ start: 1, end: "a" })).toBeInvalid();
 			});
 			
 			it("should be invalid if attributes do not satisfy model level (self) rule", function () {
-				expect(new TestModel({ start: "3", end: "1" })).toBeInvalid();
+				expect(new TestModel({ start: 3, end: 1 })).toBeInvalid();
 			});
 			
 

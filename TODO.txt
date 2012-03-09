@@ -8,7 +8,7 @@ rules.combine(rules.numeric(), rules.length({ len: 6 }), { message: "Number 6 di
 
 3. DONE Add exact property to length options for exact length
 
-4. Special use of self property to define rules on instance:
+4. DONE Special use of self property to define rules on instance:
 
 var Model = Backbone.Model.extend({
 	rules: {
@@ -46,6 +46,6 @@ birthday: rules.date("ddMMyyyy|ddMMyyyy")
 
 7. Numbers
 
-rules.number(type:"int" (decimal), min: 3, max: 4)
+rules.number(type:"integer" (decimal), min: 3, max: 4)
 
 6. Global configuration of common options, like trim
