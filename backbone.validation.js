@@ -31,6 +31,11 @@ Backbone.validation = (function () {
 
 	};
 
+	var paths = {
+		appendAttribute: function (parent, key) {
+			return (parent || "") + (parent ? parent + "." : "") + key;
+		}
+	};
 	// Configuration
 	// -------
 	var config = { selfReferenceRuleKey: "self", multiAttributeKeyDelimiter: "," };
@@ -38,19 +43,29 @@ Backbone.validation = (function () {
 	// Core validation functionality
 	// -------
 
-	// ValueAccessors - get the value(s) to be validated
+	// ValueAccessors - provides validators with the value(s) to be validated
+
+	// has: determines whether the validation can be run
+	// get: gets the value(s) to be validated
+	// makeInvalidValues: creates invalid values for the attribute(s)
+	// being validated
+
 	var SingleValueAccessor = function (key) {
 		this.key = key;
 	};
-	_.extend(AttributeValueAccessor.prototype, {
+	_.extend(SingleValueAccessor.prototype, {
 		has: function (attributes) {
 			return _.has(attributes, this.key);
 		},
 		get: function (attributes) {
-			return attributes[key];
+			return attributes[this.key];
+		},
+		makeInvalidValues: function (errors, context) {
+			return [{ attr: this.key, path: paths.appendAttribute(context.path, this.key), errors: errors}];
 		}
 	});
 
+	// Gets multiple attribute values
 	var MultiValueAccessor = function (keys) {
 		this.keys = keys;
 	};
@@ -73,22 +88,31 @@ Backbone.validation = (function () {
 				values[key] = _.has(attributes, key) ? attributes[key] : context.target.get(key);
 			});
 			return values;
+		},
+		makeInvalidValues: function (errors, context) {
+			return _.map(this.keys, function (key) {
+				return { attr: key, path: paths.appendAttribute(context.path, key), errors: errors };
+			});
 		}
 	});
-
+	// Gets the actual target object being validated (model or collection)
 	var SelfAccessor = function () {
 	};
 	_.extend(SelfAccessor.prototype, {
 		has: function () {
 			return true;
 		},
-		get: function (attributes, target) {
-			return target;
+		get: function (attributes, context) {
+			return context.target;
+		},
+		makeInvalidValues: function (errors, context) {
+			// references target being validated
+			return [{ attr: "", path: context.path, errors: errors }];
 		}
 	});
 
 	var createValueAccessor = function (key) {
-		if (key.indexOf(config.multiAttributeKeySeparator)) {
+		if (key.indexOf(config.multiAttributeKeySeparator) != -1) {
 			return new MultiValueAccessor(key.split(config.multiAttributeKeySeparator));
 		} else if (key === config.selfReferenceRuleKey) {
 			return new SelfAccessor();
@@ -124,10 +148,13 @@ Backbone.validation = (function () {
 			}, this);
 		},
 		validate: function (attributes, context) {
+			context || (context = {});
+			context.path || (context.path = "");
 			var map = {};
 			for (var i = 0, l = this.validators.length; i < l; i++) {
 				var validator = this.validators[i];
-				this.mergeInvalidValues(map, validator.validate(attributes, context));
+				var invalidValues = validator.validate(attributes, context);
+				this.mergeInvalidValues(map, invalidValues);
 			}
 			return new Result(_.values(map));
 		},
@@ -157,11 +184,12 @@ Backbone.validation = (function () {
 				return [];
 			}
 			var value = this.accessor.get(attributes, context);
-			return this.runRules(value, context);
+			var errors = this.test(value, context);
+			var invalidValues = errors.length ? this.accessor.makeInvalidValues(errors, context) : [];
+			return invalidValues;
 		},
-		runRules: function (value, context) {
+		test: function (value, context) {
 			var rule, isValid;
-			var invalidValues = [];
 			var errors = [];
 			for (var i = 0, l = this.rules.length; i < l; i++) {
 				rule = this.rules[i];
@@ -171,14 +199,14 @@ Backbone.validation = (function () {
 					errors.push({ message: message, key: rule.key });
 				}
 			}
-			return errors.length === 0 ? [] : [{ attr: context.attr, path: context.path, errors: errors }];
+			return errors;
 		}
 	});
 
 	// Result of validating attributes
 	var Result = function (invalidValues) {
 		this.invalidValues = invalidValues;
-		this.isValid = errors.length === 0;
+		this.isValid = invalidValues.length === 0;
 	};
 	_.extend(Result.prototype, {
 		// Summary of result suitable for logging / diagnostics
@@ -198,7 +226,7 @@ Backbone.validation = (function () {
 
 
 	// RuleBuilder - Used to configure rules
-	// RuleBuilders are immutable, with each method that adds a rule returning a new instance with the additional rule.
+	// RuleBuilders are immutable. Each rule method returns a new instance with the additional rule.
 	var RuleBuilder = function (rules) {
 		this.rules = rules || [];
 	};
@@ -417,8 +445,9 @@ Backbone.validation = (function () {
 	// The extension that is mixed in to Model to add validation functionality
 	var modelValidation = {
 		validate: function (attributes) {
+			attributes || (attributes = this.attributes);
 			var validator = initModelValidator(this);
-			var result = validator.validate(attributes, this);
+			var result = validator.validate(attributes, { target: this });
 			if (!result.isValid) {
 				return result;
 			}
