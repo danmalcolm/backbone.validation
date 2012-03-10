@@ -95,7 +95,8 @@
 		},
 		events: {
 			"change input[name=email]": "updateEmail",
-			// provide feedback as password is typed
+			// provide feedback as password is typed - could be issues with
+			// autocomplete, maybe need change aswell
 			"keyup input[name=password]": "updatePassword",
 			"click input:submit": "save"
 		},
