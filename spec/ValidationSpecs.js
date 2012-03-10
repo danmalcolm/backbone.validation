@@ -8,17 +8,20 @@ describe("model validation", function () {
 		return new ModelValidator({ rules: rulesConfig });
 	};
 
+	// Model extended with modelValidation
+	var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
+
+
 	describe("model validation extension", function () {
 
-		var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
-		var TestModel = BaseModel.extend({
+		var Model = BaseModel.extend({
 			rules: {
 				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" })
 			}
 		});
 		var model;
 		beforeEach(function () {
-			model = new TestModel();
+			model = new Model();
 		});
 
 		it("should trigger error if invalid attribute is set", function () {
@@ -65,52 +68,56 @@ describe("model validation", function () {
 
 	describe("model validation", function () {
 
-		describe("when validating specific attributes", function () {
+		var model;
 
-			var validator;
+		beforeEach(function () {
 
-			beforeEach(function () {
-				validator = createValidator({
+			this.addMatchers({
+				toBeValid: function () {
+					var result = model.validate(this.actual);
+					this.message = function () {
+						return "Expected attributes to be valid (ie no result) but result was returned: \n" + f(result);
+					};
+					return !result;
+				},
+				toBeInvalid: function () {
+					var result = model.validate(this.actual);
+					this.message = function () {
+						return "Expected attributes to be invalid but no result was returned by model.validate";
+					};
+					return !result.isValid;
+				}
+			});
+		});
+
+		describe("when validating attributes using model", function () {
+
+			var Model = BaseModel.extend({
+				rules: {
 					code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
 					name: rules.length({ min: 2, max: 5, message: "Between 2 and 5" }),
 					description: rules.notNull({ message: "Not null" })
-				});
+				}
+			});
 
-				this.addMatchers({
-					toBeValid: function () {
-						var result = this.actual;
-						this.message = function () {
-							return "Expected result to be valid but result was as follows: \n" + f(result);
-						};
-						return result.isValid;
-					},
-					toBeInvalid: function () {
-						var result = this.actual;
-						this.message = function () {
-							return "Expected result to be invalid but result was as follows: \n" + f(result);
-						};
-						return !result.isValid;
-					}
-				});
+			beforeEach(function () {
+				model = new Model();
 			});
 
 			it("should be valid if single attr being tested is valid", function () {
-				var result = validator.validate({ code: "123" });
-				expect(result).toBeValid();
+				expect({ code: "123" }).toBeValid();
 			});
 
 			it("should be valid if all attrs being tested are valid", function () {
-				var result = validator.validate({ code: "123", name: "123" });
-				expect(result).toBeValid();
+				expect({ code: "123", name: "123" }).toBeValid();
 			});
 
-			it("should be invalid if one of all attrs being tested is invalid", function () {
-				var result = validator.validate({ code: "1", name: "123" });
-				expect(result).toBeInvalid();
+			it("should be invalid if one of multiple attrs being tested is invalid", function () {
+				expect({ code: "1", name: "123" }).toBeInvalid();
 			});
 
 			it("should describe each invalid value", function () {
-				var result = validator.validate({ code: "123", name: "1", description: null });
+				var result = model.validate({ code: "123", name: "1", description: null });
 				expect(result.invalidValues).toEqual([
 						{ attr: "name", path: "name", errors: [{ message: "Between 2 and 5", key: "string-length"}] },
 						{ attr: "description", path: "description", errors: [{ message: "Not null", key: "not-null"}] }
@@ -119,50 +126,97 @@ describe("model validation", function () {
 
 		});
 
-		describe("when creating model", function () {
+		// Rules that validate single value
+		describe("when testing rules applied to single attribute values", function () {
 
-			var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
-			var TestModel = BaseModel.extend({
+			var Model = BaseModel.extend({
 				rules: {
-					self: rules.check(function (model) {
-						return model.get("start") < model.get("end");
-					}, { message: "Start must be less than end" }),
 					start: rules.numeric(),
 					end: rules.numeric()
 				}
 			});
 
 			beforeEach(function () {
-				this.addMatchers({
-					toBeValid: function () {
-						var model = this.actual;
-						var result = model.validate();
-						this.message = function () {
-							return "Expected model to be valid but result was as follows: \n" + f(result);
-						};
-						return !result;
-					},
-					toBeInvalid: function () {
-						var model = this.actual;
-						var result = model.validate();
-						this.message = function () {
-							return "Expected model to be invalid but it was valid";
-						};
-						return result;
-					}
-				});
+				model = new Model();
 			});
 
-			it("should be valid if attributes satisfy all rules", function () {
-				expect(new TestModel({ start: 1, end: 2 })).toBeValid();
+			it("should be valid if single attr being tested is valid", function () {
+				expect({ start: 1 }).toBeValid();
+				expect({ end: 1 }).toBeValid();
+			});
+
+			it("should be valid if all attributes being tested are valid", function () {
+				expect({ start: 1, end: 2 }).toBeValid();
 			});
 
 			it("should be invalid if one of attributes is invalid", function () {
 				expect(new TestModel({ start: 1, end: "a" })).toBeInvalid();
 			});
 
-			it("should be invalid if attributes do not satisfy model level (self) rule", function () {
-				expect(new TestModel({ start: 3, end: 1 })).toBeInvalid();
+		});
+
+		describe("when testing rules applied to multiple attributes", function () {
+
+			var tested;
+			var args;
+			var Model = BaseModel.extend({
+				rules: {
+					start: rules.numeric(),
+					end: rules.numeric(),
+					"start,end": rules.check(function (start, end) {
+						tested = true;
+						args = _.clone(arguments);
+						return start < end;
+					}, { message: "Start must be less than end" })
+				}
+			});
+
+			beforeEach(function () {
+				model = new Model();
+				tested = false;
+			});
+
+			it("should run test with both values when both attributes specified", function () {
+				expect({ start: 1, end: 2 }).toBeValid();
+				expect(tested).toBeTruthy();
+			});
+
+			it("should run test with specified value and existing model attribute if single value specified and model has other", function () {
+				model.set("start", 1, { silent: true });
+				expect({ end: 2 }).toBeValid();
+				expect(tested).toBeTruthy();
+				expect(args[0].toEqual(1));
+				expect(args[1].toEqual(2));
+			});
+
+			it("should test successfully if specified values satisfy rule", function () {
+				expect({ start: 1, end: 2 }).toBeValid();
+				expect(tested).toBeTruthy();
+			});
+
+			it("should not test rule if no attributes are specified", function () {
+				model.validate({ other: "" });
+				expect(tested).toBeFalsy();
+			});
+
+			it("should not test rule if only one of attributes is specified", function () {
+				model.validate({ start: 1 });
+				expect(tested).toBeFalsy();
+			});
+
+			it("should test and succeed if combination of specified value and model attribute satisfies rule", function () {
+				model.set("start", 1, { silent: true });
+				expect({ end: 2 }).toBeValid();
+				expect(tested).toBeTruthy();
+			});
+
+			it("should not test rule if one of specified values fails validation", function () {
+				expect({ start: 1, end: "a" }).toBeInvalid();
+				expect(tested).toBeFalsy();
+			});
+
+			it("should be invalid if attributes do not satisfy rule", function () {
+				expect({ start: 3, end: 1 }).toBeInvalid();
 			});
 		});
 
@@ -203,7 +257,7 @@ describe("model validation", function () {
 	describe("validation rules", function () {
 
 		var TestModel = Backbone.Model.extend(Backbone.validation.modelValidation);
-		
+
 		var validator, model;
 
 		var valid = function (value, description) {
@@ -246,7 +300,7 @@ describe("model validation", function () {
 
 		beforeEach(function () {
 			model = new TestModel();
-					
+
 			this.addMatchers({
 				toBeValid: function () {
 					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model() });
