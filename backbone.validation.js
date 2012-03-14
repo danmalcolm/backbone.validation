@@ -31,9 +31,9 @@ Backbone.validation = (function () {
 
 	};
 
-	var paths = {
-		appendAttribute: function (parent, key) {
-			return (parent || "") + (parent ? parent + "." : "") + key;
+	var pathBuilder = {
+		appendKey: function (path, key) {
+			return path + ((path.length > 0 && key.length > 0) ? "." : "") + key;
 		}
 	};
 	// Configuration
@@ -42,87 +42,6 @@ Backbone.validation = (function () {
 
 	// Core validation functionality
 	// -------
-
-	// ValueAccessors - provides validators with the value(s) to be validated
-
-	// has: determines whether the validation can be run
-	// get: gets the value(s) to be validated 
-	// makeInvalidValues: creates invalid values for the attribute(s)
-	// being validated
-
-	var SingleValueAccessor = function (key) {
-		this.key = key;
-	};
-	_.extend(SingleValueAccessor.prototype, {
-		has: function (attributes) {
-			return _.has(attributes, this.key);
-		},
-		get: function (attributes) {
-			return [attributes[this.key]];
-		},
-		makeInvalidValues: function (attributes, errors, context) {
-			return [{ attr: this.key, path: paths.appendAttribute(context.path, this.key), errors: errors}];
-		}
-	});
-
-	// Gets multiple attribute values
-	var MultiValueAccessor = function (keys) {
-		this.keys = keys;
-	};
-	_.extend(MultiValueAccessor.prototype, {
-		has: function (attributes, context) {
-			var specified = _.any(this.keys, function (k) {
-				// at least one value specified for validation
-				return _.has(attributes, k);
-			});
-			var available = _.all(this.keys, function (k) {
-				// value available for validation, either as
-				// attribute being specified or existing attribute
-				return _.has(attributes, k) || context.target.has(k);
-			});
-			return specified && available;
-		},
-		get: function (attributes, context) {
-			var values = [];
-			_.each(this.keys, function (key) {
-				values.push(_.has(attributes, key) ? attributes[key] : context.target.get(key));
-			});
-			return values;
-		},
-		makeInvalidValues: function (attributes, errors, context) {
-			var specified = _.filter(this.keys, function (key) {
-				return _.has(attributes, key);
-			});
-			return _.map(specified, function (key) {
-				return { attr: key, path: paths.appendAttribute(context.path, key), errors: errors };
-			});
-		}
-	});
-	// Gets the actual target object being validated (model or collection)
-	var SelfAccessor = function () {
-	};
-	_.extend(SelfAccessor.prototype, {
-		has: function () {
-			return true;
-		},
-		get: function (attributes, context) {
-			return [context.target];
-		},
-		makeInvalidValues: function (attributes, errors, context) {
-			// references target being validated
-			return [{ attr: "", path: context.path, errors: errors}];
-		}
-	});
-
-	var createValueAccessor = function (key) {
-		if (key.indexOf(config.multiAttributeKeySeparator) != -1) {
-			return new MultiValueAccessor(key.split(config.multiAttributeKeySeparator));
-		} else if (key === config.selfReferenceRuleKey) {
-			return new SelfAccessor();
-		} else {
-			return new SingleValueAccessor(key);
-		}
-	};
 
 	// ModelValidator - validates at model level
 	// Rules are configured by object passed to constructor, which specifies rules
@@ -145,14 +64,11 @@ Backbone.validation = (function () {
 			modelConfig || (modelConfig = {});
 
 			_.each(modelConfig.rules, function (ruleBuilder, key) {
-				var accessor = createValueAccessor(key);
-				validator = new Validator(key, accessor, ruleBuilder.rules);
+				validator = new Validator(key, ruleBuilder.rules);
 				this.validators.push(validator);
 			}, this);
 		},
 		validate: function (attributes, context) {
-			context || (context = {});
-			context.path || (context.path = "");
 			var map = {};
 			for (var i = 0, l = this.validators.length; i < l; i++) {
 				var validator = this.validators[i];
@@ -176,40 +92,103 @@ Backbone.validation = (function () {
 		}
 	});
 
-
-	// Validates attribute value(s), model or collection using the specified rules
-	var Validator = function (name, accessor, rules) {
-		this.name = name;
-		this.accessor = accessor;
+	// Validates one or more attribute values using the specified rules
+	var Validator = function (key, rules) {
+		this.initialize(key);
 		this.rules = rules;
 	};
-
 	_.extend(Validator.prototype, {
-		validate: function (attributes, context) {
-			if (!this.accessor.has(attributes, context)) {
-				return [];
+		initialize: function (key) {
+			if (key.indexOf(config.multiAttributeKeySeparator) != -1) {
+				this.keys = key.split(config.multiAttributeKeySeparator);
+			} else {
+				this.keys = [key];
 			}
-			var values = this.accessor.get(attributes, context);
-			var errors = this.test(values);
-			var invalidValues = errors.length ? this.accessor.makeInvalidValues(attributes, errors, context) : [];
+		},
+		validate: function (attributes, context) {
+			var specifiedKeys = this.getSpecifiedKeys(attributes);
+			if (specifiedKeys.length === 0) {
+				return emptyArray;
+			}
+			var values = this.getValues(attributes, context);
+			if (values.length !== this.keys.length) {
+				return emptyArray;
+			}
+			var invalidValues = [];
+			for (var i = 0, l = specifiedKeys.length; i < l; i++) {
+				this.testRules(specifiedKeys[i], values, invalidValues, context);
+			}
 			return invalidValues;
 		},
-		test: function (values, context) {
-			var args, rule, isValid;
-			// Invoke rule method with each value as a separate parameter followed by context parameter
-			args = _.clone(values);
-			args.push(context);
-
-			var errors = [];
-			for (var i = 0, l = this.rules.length; i < l; i++) {
-				rule = this.rules[i];
-				isValid = rule.isValid.apply(rule, args);
-				if (!isValid) {
-					var message = rule.options.message || messageBuilder.createMessage(rule, context);
-					errors.push({ message: message, key: rule.key });
+		getSpecifiedKeys: function (attributes) {
+			return _.filter(this.keys, function (key) {
+				if (key === config.selfReferenceRuleKey) {
+					// We can always validate target object
+					return true;
 				}
+				// we should validate if one of values is in
+				// attributes specified
+				return _.has(attributes, key);
+			});
+		},
+		getValues: function (attributes, context) {
+			var values = [];
+			_.each(this.keys, function (key) {
+				if (key === config.selfReferenceRuleKey) {
+					values.push(context.target);
+				} else if (_.has(attributes, key)) {
+					values.push(attributes[key]);
+				} else if (context.target.has(key)) {
+					values.push(context.target.get(key));
+				}
+			});
+			return values;
+		},
+		testRules: function (key, values, invalidValues, context) {
+			var i, l, result;
+			context = _.clone(context);
+			context.path = pathBuilder.appendKey(context.path, key);
+			for (i = 0, l = this.rules.length; i < l; i++) {
+				result = this.rules[i].test(key, values, context);
+				invalidValues.push.apply(invalidValues, result);
 			}
-			return errors;
+		}
+	});
+
+	// Individual validation rule
+	var Rule = function (isValid, options, key) {
+		this.isValid = isValid;
+		this.options = options || {};
+		this.key = key || "";
+	};
+
+	// Shared instance
+	var emptyArray = [];
+
+	_.extend(Rule.prototype, {
+		test: function (key, values, context) {
+			// get isValid args by flattening values array and appending context arg
+			// e.g. if validating values for attributes "start,end", we invoke isValid with (start, end, context)
+			var args = values.slice();
+			args.push(context);
+			var result = this.isValid.apply(this.isValid, args);
+
+			if (result === true) {
+				return emptyArray;
+			} else {
+				// If isValid returns a nested result, we include invalid values in current result
+				var invalidValues = (_.isObject(result) && _.isArray(result.invalidValues)) ? result.invalidValues : [];
+				invalidValues.push(this.createInvalidValue(key, context));
+				return invalidValues;
+			}
+		},
+		createInvalidValue: function (key, context) {
+			var message = this.options.message || messageBuilder.createMessage(this, context);
+			return {
+				attr: key,
+				path: context.path,
+				errors: [{ message: message, key: this.key}]
+			};
 		}
 	});
 
@@ -233,6 +212,7 @@ Backbone.validation = (function () {
 			return message;
 		}
 	});
+
 
 
 	// RuleBuilder - Used to configure rules
@@ -313,6 +293,7 @@ Backbone.validation = (function () {
 				return /^[A-Z0-9._%+-]+@(?:[A-Z0-9-]+\.)+([A-Z]{2,4}|museum)$/i.test(value);
 			}, options, "email");
 		},
+		// sequence of ruleBuilders and optional options as final arg
 		_parseAnyCombineArgs: function (args) {
 			var options;
 			var ruleSets = [];
@@ -363,15 +344,18 @@ Backbone.validation = (function () {
 			return this.addRule(function (value, context) {
 				return func(value, context);
 			}, options, "check");
+		},
+		// tests whether a nested model is valid (using its own validate method) 
+		// and includes any invalidValues in the result
+		validate: function (options) {
+			return this.addRule(function (value, context) {
+				if (_.isFunction(value.validate)) {
+					var result = value.validate(null, context.options, context);
+					return !result ? true : result;
+				}
+			}, options, "child-model");
 		}
 	});
-
-	// Individual validation rule
-	var Rule = function (isValid, options, key) {
-		this.isValid = isValid;
-		this.options = options || {};
-		this.key = key || "";
-	};
 
 
 	/* --------------------------------------------*/
@@ -439,7 +423,7 @@ Backbone.validation = (function () {
 	var messageBuilder = new MessageBuilder(defaultMessageConfig);
 
 	/* --------------------------------------------*/
-	// Model extension s
+	// Model extensions
 
 	var initModelValidator = function (target) {
 		if (!target.validator) {
@@ -452,19 +436,22 @@ Backbone.validation = (function () {
 		return target.validator;
 	};
 
-	// The extension that is mixed in to Model to add validation functionality
+	// Mixin object used to extend Model with validation functionality
 	var modelValidation = {
-		validate: function (attributes) {
+		validate: function (attributes, options, context) {
 			attributes || (attributes = this.attributes);
-			var validator = initModelValidator(this);
-			var result = validator.validate(attributes, { target: this });
+			var modelValidator = initModelValidator(this);
+			context = _.isObject(context) ? _.clone(context) : { path: "" };
+			_.extend(context, {
+				options: options,
+				target: this
+			});
+			var result = modelValidator.validate(attributes, context);
 			if (!result.isValid) {
 				return result;
 			}
 		}
 	};
-
-
 
 	return {
 		ModelValidator: ModelValidator,

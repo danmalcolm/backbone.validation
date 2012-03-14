@@ -139,6 +139,45 @@ describe("model validation", function () {
 
 		});
 
+		describe("TODO nested object validation", function () {
+
+			var Order = BaseModel.extend({
+				rules: {
+					reference: rules.numeric().length({exact: 6}),
+					customer: rules.validate({ message: "Customer should be valid" })
+				}
+			});
+
+			var Customer = BaseModel.extend({
+				rules: {
+					name: rules.notBlank().length({ min: 2, message: "At least 2"})
+				}
+			});
+
+			var order;
+
+			beforeEach(function () {
+				model = new Order();
+			});
+
+			describe("when setting nested model attribute",function(){
+
+				it("should fail validation if model invalid",function(){
+					expect({ customer: new Customer({ name: "X" }) }).toBeInvalid();
+				});
+
+				it("should include full path to invalid values on nested attributes", function () {
+					expect({ customer: new Customer({ name: "X" }) }).toBeInvalid([
+						{ attr: "name", path: "customer.name", errors: [{ message: "At least 2", key: "string-length"}] },
+						{ attr: "customer", path: "customer", errors: [{ message: "Customer should be valid", key: "child-model"}] }
+					]);
+				});
+
+			});
+
+			
+		});
+
 		// Rules that validate single value
 		describe("when testing rules applied to single attribute values", function () {
 
@@ -287,26 +326,7 @@ describe("model validation", function () {
 		});
 
 
-		describe("TODO nested object validation", function () {
-
-			var Order = BaseModel.extend({
-
-			});
-
-			var Customer = BaseModel.extend({
-
-			});
-
-			var order;
-
-			beforeEach(function () {
-				order = new Order();
-
-				
-			});
-
-			
-		});
+		
 	});
 
 
@@ -361,7 +381,7 @@ describe("model validation", function () {
 
 			this.addMatchers({
 				toBeValid: function () {
-					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model() });
+					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model(), path: "" });
 					this.message = function () {
 						return "Expected model to be valid but result was as follows: \n" + f(result);
 					};
@@ -369,7 +389,7 @@ describe("model validation", function () {
 
 				},
 				toBeInvalid: function (expectedMessages) {
-					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model() });
+					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model(), path: "" });
 					this.message = function () {
 						var message = "Expected model to be invalid";
 						if (expectedMessages) {
