@@ -84,17 +84,18 @@ describe("model validation", function () {
 				// Validates an object specifying attribute values against the current model
 				toBeInvalid: function (invalidValues) {
 					var result = model.validate(this.actual);
-					this.message = function () {
-						return "Expected attributes to be invalid but no result was returned by model.validate";
-					};
 
 					this.message = function () {
-						var message = "Expected validation to fail";
-						if (invalidValues) {
-							message += " with invalid values: " + f(invalidValues);
+						if (!result) {
+							return "Expected attributes to be invalid but no result was returned by model.validate, which indicates that values are valid";
+						} else {
+							var message = "Expected validation to fail";
+							if (invalidValues) {
+								message += " with invalid values: " + f(invalidValues);
+							}
+							message += " but invalid values were as follows: \n" + f(result.invalidValues);
+							return message;
 						}
-						message += " but invalid values were as follows: \n" + f(result.invalidValues);
-						return message;
 					};
 					return result
 						&& !result.isValid
@@ -139,43 +140,51 @@ describe("model validation", function () {
 
 		});
 
-		describe("TODO nested object validation", function () {
+		describe("nested model validation", function () {
 
 			var Order = BaseModel.extend({
 				rules: {
-					reference: rules.numeric().length({exact: 6}),
 					customer: rules.validate({ message: "Customer should be valid" })
 				}
 			});
 
 			var Customer = BaseModel.extend({
 				rules: {
-					name: rules.notBlank().length({ min: 2, message: "At least 2"})
+					name: rules.length({ min: 2, message: "At least 2" }),
+					address: rules.validate({ message: "Customer's address should be valid"})
 				}
 			});
 
-			var order;
+			var Address = BaseModel.extend({
+				rules: {
+					line1: rules.length({ min: 2, message: "At least 2" })
+				}
+			});
 
 			beforeEach(function () {
 				model = new Order();
 			});
 
-			describe("when setting nested model attribute",function(){
+			describe("when setting invalid attribute on nested model", function () {
 
-				it("should fail validation if model invalid",function(){
-					expect({ customer: new Customer({ name: "X" }) }).toBeInvalid();
-				});
-
-				it("should include full path to invalid values on nested attributes", function () {
-					expect({ customer: new Customer({ name: "X" }) }).toBeInvalid([
-						{ attr: "name", path: "customer.name", errors: [{ message: "At least 2", key: "string-length"}] },
-						{ attr: "customer", path: "customer", errors: [{ message: "Customer should be valid", key: "child-model"}] }
+				it("should fail validation with full path to invalid values", function () {
+					expect({ customer: new Customer({ name: "X", address: new Address({ line1: "1 My Street" }) }) }).toBeInvalid([
+						{ attr: "name", path: "customer.name", errors: [{ message: "At least 2", key: "string-length"}] }
 					]);
 				});
 
 			});
 
-			
+			describe("when setting invalid attribute on model nested 2 levels deep", function () {
+
+				it("should fail validation with full path to invalid values", function () {
+					expect({ customer: new Customer({ name: "Mike", address: new Address({ line1: "X" }) }) }).toBeInvalid([
+						{ attr: "line1", path: "customer.address.line1", errors: [{ message: "At least 2", key: "string-length"}] }
+					]);
+				});
+
+			});
+
 		});
 
 		// Rules that validate single value
@@ -325,8 +334,6 @@ describe("model validation", function () {
 
 		});
 
-
-		
 	});
 
 

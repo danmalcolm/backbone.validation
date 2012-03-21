@@ -1,5 +1,3 @@
-Backbone.validation = {};
-
 Backbone.validation = (function () {
 
 	// Helpers
@@ -36,6 +34,7 @@ Backbone.validation = (function () {
 			return path + ((path.length > 0 && key.length > 0) ? "." : "") + key;
 		}
 	};
+
 	// Configuration
 	// -------
 	var config = { selfReferenceRuleKey: "self", multiAttributeKeySeparator: "," };
@@ -155,44 +154,65 @@ Backbone.validation = (function () {
 		}
 	});
 
-	// Individual validation rule
-	var Rule = function (isValid, options, key) {
+	// Shared instance
+	var emptyArray = [];
+
+	// Rules
+	// --------------
+
+	// Each rule type contains a "test" function that returns an array of invalid values
+
+	// Simple validation rule that validates the value(s) using an isValid delegate.
+	var SimpleRule = function (isValid, options, key) {
 		this.isValid = isValid;
 		this.options = options || {};
 		this.key = key || "";
 	};
 
-	// Shared instance
-	var emptyArray = [];
-
-	_.extend(Rule.prototype, {
+	_.extend(SimpleRule.prototype, {
 		test: function (key, values, context) {
-			// get isValid args by flattening values array and appending context arg
-			// e.g. if validating values for attributes "start,end", we invoke isValid with (start, end, context)
+			// Invoke isValid with value(s) and context, e.g.
+			// - if validating values for attributes "start", invoke isValid(start, context)
+			// - if validating values for attributes "start,end", invoke isValid(start, end, context)
 			var args = values.slice();
 			args.push(context);
-			var result = this.isValid.apply(this.isValid, args);
-
-			if (result === true) {
+			var result = this.isValid.apply(this, args);
+			// Truthy result means values are valid
+			if (result) {
 				return emptyArray;
 			} else {
-				// If isValid returns a nested result, we include invalid values in current result
-				var invalidValues = (_.isObject(result) && _.isArray(result.invalidValues)) ? result.invalidValues : [];
-				invalidValues.push(this.createInvalidValue(key, context));
-				return invalidValues;
+				var message = this.options.message || messageBuilder.createMessage(this, context);
+				var invalidValue = {
+					attr: key,
+					path: context.path,
+					errors: [{ message: message, key: this.key}]
+				};
+				return [invalidValue];
 			}
-		},
-		createInvalidValue: function (key, context) {
-			var message = this.options.message || messageBuilder.createMessage(this, context);
-			return {
-				attr: key,
-				path: context.path,
-				errors: [{ message: message, key: this.key}]
-			};
 		}
 	});
 
-	// Result of validating attributes
+	// Requires that a nested model or collection is valid
+	var NestedObjectRule = function (options, key) {
+		this.options = options || {};
+		this.key = key || "";
+	};
+
+	_.extend(NestedObjectRule.prototype, {
+		test: function (key, values, context) {
+			var target = values[0];
+			if (_.isFunction(target.validate)) {
+				var result = target.validate(null, context.options, context);
+				var invalidValues = (_.isObject(result) && _.isArray(result.invalidValues)) ? result.invalidValues : emptyArray;
+				return invalidValues;
+			} else {
+				return emptyArray;
+			}
+		}
+	});
+
+
+	// Result of validating a model
 	var Result = function (invalidValues) {
 		this.invalidValues = invalidValues;
 		this.isValid = invalidValues.length === 0;
@@ -222,21 +242,24 @@ Backbone.validation = (function () {
 	};
 
 	_.extend(RuleBuilder.prototype, {
-		addRule: function (isValid, options, key) {
-			var rule = new Rule(isValid, options, key);
+		addRule: function (rule) {
 			var newRules = this.rules.slice();
 			newRules.push(rule);
 			return new RuleBuilder(newRules);
 		},
+		addSimpleRule: function (isValid, options, key) {
+			var rule = new SimpleRule(isValid, options, key);
+			return this.addRule(rule);
+		},
 		// value cannot be null or undefined
 		notNull: function (options) {
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				return !isNullOrUndefined(value);
 			}, options, "not-null");
 		},
 		// all characters in value must be numeric
 		numeric: function (options) {
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				if (isNullOrUndefined(value)) {
 					return true;
 				}
@@ -246,7 +269,7 @@ Backbone.validation = (function () {
 		// value cannot be null or undefined
 		range: function (options) {
 			var values = options.values || {};
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				if (options.ignoreCase) {
 					return _.any(values, function (item) {
 						return areEqualIgnoreCase(value, item);
@@ -258,7 +281,7 @@ Backbone.validation = (function () {
 		},
 		// not null, not undefined, not-empty and not whitespace string value
 		notBlank: function (options) {
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				return !isNullOrUndefined(value) && !_.isNull(value.toString().match(/\S/));
 			}, options, "string-not-blank");
 		},
@@ -269,7 +292,7 @@ Backbone.validation = (function () {
 		// trim: trim whitespace from start and end of value before testing length
 		length: function (options) {
 			options || (options = {});
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				if (isNullOrUndefined(value)) {
 					return false;
 				}
@@ -285,7 +308,7 @@ Backbone.validation = (function () {
 		// string value in valid email format
 		email: function (options) {
 			options || (options = {});
-			return this.addRule(function (value) {
+			return this.addSimpleRule(function (value) {
 				if (!_.isString(value))
 					return false;
 				if (options.trim)
@@ -320,7 +343,7 @@ Backbone.validation = (function () {
 					});
 				});
 			};
-			return this.addRule(isValid, args.options);
+			return this.addSimpleRule(isValid, args.options);
 		},
 		// Tests one or more sets of rules from a sequence of RuleBuilders. All
 		// rules in all of the sets must pass for validation to be successful.
@@ -335,25 +358,21 @@ Backbone.validation = (function () {
 					});
 				});
 			};
-			return this.addRule(isValid, args.options);
+			return this.addSimpleRule(isValid, args.options);
 		},
 		// custom check using a callback function. The function will be invoked with
 		// 2 arguments (value, context) - the context contains the name of the attr
 		// and the parent model if available
 		check: function (func, options) {
-			return this.addRule(function (value, context) {
+			return this.addSimpleRule(function (value, context) {
 				return func(value, context);
 			}, options, "check");
 		},
-		// tests whether a nested model is valid (using its own validate method) 
+		// tests whether a nested model or collection is valid (using its own validate method) 
 		// and includes any invalidValues in the result
 		validate: function (options) {
-			return this.addRule(function (value, context) {
-				if (_.isFunction(value.validate)) {
-					var result = value.validate(null, context.options, context);
-					return !result ? true : result;
-				}
-			}, options, "child-model");
+			var rule = new NestedObjectRule(options, "child-model");
+			return this.addRule(rule);
 		}
 	});
 
