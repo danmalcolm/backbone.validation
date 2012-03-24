@@ -1,16 +1,17 @@
 Backbone.validation = (function () {
 
-	// Helpers
+	var emptyArray = [];
+
+	// Utility functions
 	// -------
 
-	// Utility check functions
 	var isNullOrUndefined = function (value) {
 		return _.isNull(value) || _.isUndefined(value);
 	};
 
 	var asString = function (value) {
 		if (isNullOrUndefined(value)) {
-			throw new Error("Expected defined not null value");
+			throw new Error("Expected a defined non null value");
 		}
 		return value.toString();
 	};
@@ -25,34 +26,46 @@ Backbone.validation = (function () {
 		return asString(value).replace(/^\s+|\s+$/g, "");
 	};
 
-	var isNumeric = function (value) {
+	// Helpers
+	// -------
 
-	};
-
-	var pathBuilder = {
-		appendKey: function (path, key) {
-			return path + ((path.length > 0 && key.length > 0) ? "." : "") + key;
+	// Generates path to invalid values
+	var pathFormatters = {
+		"default": {
+			appendAttribute: function (path, key) {
+				var atStart = (path.length === 0);
+				return path + (!atStart ? "." : "") + key;
+			},
+			appendCollectionItem: function (path, index) {
+				return path + "[" + index + "]";
+			}
+		},
+		"ruby-on-rails": {
+			appendAttribute: function (path, key) {
+				var atStart = (path.length === 0);
+				return path + (!atStart ? "[" : "") + key + (!atStart ? "]" : "");
+			},
+			appendCollectionItem: function (path, index) {
+				return path + "[" + index + "]";
+			}
 		}
 	};
 
 	// Configuration
 	// -------
-	var config = { selfReferenceRuleKey: "self", multiAttributeKeySeparator: "," };
+
+	var defaultConfig = {
+		selfReferenceRuleKey: "self",
+		multiAttributeKeySeparator: ",", 
+		pathFormatter: pathFormatters["default"]
+	};
+
+	var config = defaultConfig;
 
 	// Core validation functionality
 	// -------
 
-	// ModelValidator - validates at model level
-	// Rules are configured by object passed to constructor, which specifies rules
-	// as followscontains a
-	// rules object
-	//
-	// {
-	//	rules: {
-	//	  attr1: rules.notNull(),
-	//	  attr2: rules.length( { min:2, max: 10 })
-	//	}
-	//}
+	// Validates a Backbone.Model instance
 	var ModelValidator = function (modelConfig) {
 		this.validators = [];
 		this.initialize(modelConfig);
@@ -60,37 +73,110 @@ Backbone.validation = (function () {
 	_.extend(ModelValidator.prototype, {
 		initialize: function (modelConfig) {
 			var validator;
-			modelConfig || (modelConfig = {});
-
 			_.each(modelConfig.rules, function (ruleBuilder, key) {
 				validator = new Validator(key, ruleBuilder.rules);
 				this.validators.push(validator);
 			}, this);
 		},
-		validate: function (attributes, context) {
-			var map = {};
+		validate: function (attributes, options, context) {
+			var builder = new ResultBuilder();
+			var values;
 			for (var i = 0, l = this.validators.length; i < l; i++) {
-				var validator = this.validators[i];
-				var invalidValues = validator.validate(attributes, context, this);
-				this.mergeInvalidValues(map, invalidValues);
+				values = this.validators[i].validate(attributes, options, context);
+				builder.add(values);
 			}
-			return new Result(_.values(map));
+			return builder.getResult();
+		}
+	});
+
+	// Validates a Backbone.Collection instance
+	var CollectionValidator = function (collectionConfig) {
+		this.validators = [];
+		this.initialize(collectionConfig);
+	};
+	_.extend(CollectionValidator.prototype, {
+		initialize: function (collectionConfig) {
+			var validator;
+			_.each(collectionConfig.rules, function (ruleBuilder, key) {
+				if (key !== config.selfReferenceRuleKey) {
+					throw new Error("Invalid key " + key + ". Only the self-reference key (" + config.selfReferenceRuleKey) + ") can be used to specify validation rules for a Backbone.Collection";
+				}
+				validator = new Validator(key, ruleBuilder.rules);
+				this.validators.push(validator);
+			}, this);
 		},
-		isValid: function (attributes, context) {
-			return this.validate(attributes, context).isValid;
+		validate: function (attributes, options, context) {
+			var builder = new ResultBuilder();
+			var values;
+			// Any validators will validate entire collection (rules can check 
+			// for unique values, totals etc)
+			for (var i = 0, l = this.validators.length; i < l; i++) {
+				values = this.validators[i].validate(attributes, options, context);
+				builder.add(values);
+			}
+			this.validateModels(options, context, builder);
+			return builder.getResult();
 		},
-		mergeInvalidValues: function (map, items) {
-			for (var i = 0, l = items.length; i < l; i++) {
-				var item = items[i];
-				if (_.has(map, item.path)) {
-					map[item.path].errors.push(item.errors);
-				} else {
-					map[item.path] = item;
+		validateModels: function (options, context, builder) {
+			var modelContext;
+			var models = context.target.models;
+			for (var i = 0, l = models.length; i < l; i++) {
+				var model = models[i];
+				if (model && _.isFunction(model.validate)) {
+					modelContext = _.clone(context);
+					modelContext.target = model;
+					modelContext.path = config.pathFormatter.appendCollectionItem(context.path, i);
+
+					var result = model.validate(null, options, modelContext);
+					if (result && _.isArray(result.invalidValues)) {
+						builder.add(result.invalidValues);
+					}
 				}
 			}
 		}
 	});
 
+	// Used during validation to combine invalid values from different validators
+	// and generate the final Result
+	var ResultBuilder = function () {
+		this.map = {};
+	};
+	_.extend(ResultBuilder.prototype, {
+		add: function (items) {
+			for (var i = 0, l = items.length; i < l; i++) {
+				var item = items[i];
+				if (_.has(this.map, item.path)) {
+					this.map[item.path].errors.push(item.errors);
+				} else {
+					this.map[item.path] = item;
+				}
+			}
+		},
+		getResult: function () {
+			return new Result(_.values(this.map));
+		}
+	});
+
+	// Result of validating a model
+	var Result = function (invalidValues) {
+		this.invalidValues = invalidValues;
+		this.isValid = invalidValues.length === 0;
+	};
+	_.extend(Result.prototype, {
+		// Summary of result suitable for logging / diagnostics
+		getSummary: function () {
+			var message = "";
+			for (var i = 0, l = this.invalidValues.length; i < l; i++) {
+				var error = this.invalidValues[i];
+				message += error.attr + ":\n";
+				for (var j = 0, lj = error.errors.length; j < lj; j++) {
+					message += "- " + error.errors[j].message + "\n";
+				}
+				message += "\n";
+			}
+			return message;
+		}
+	});
 	// Validates one or more attribute values using the specified rules
 	var Validator = function (key, rules) {
 		this.initialize(key);
@@ -104,7 +190,7 @@ Backbone.validation = (function () {
 				this.keys = [key];
 			}
 		},
-		validate: function (attributes, context) {
+		validate: function (attributes, options, context) {
 			var specifiedKeys = this.getSpecifiedKeys(attributes);
 			if (specifiedKeys.length === 0) {
 				return emptyArray;
@@ -115,7 +201,7 @@ Backbone.validation = (function () {
 			}
 			var invalidValues = [];
 			for (var i = 0, l = specifiedKeys.length; i < l; i++) {
-				this.testRules(specifiedKeys[i], values, invalidValues, context);
+				this.testRules(specifiedKeys[i], values, invalidValues, options, context);
 			}
 			return invalidValues;
 		},
@@ -143,20 +229,17 @@ Backbone.validation = (function () {
 			});
 			return values;
 		},
-		testRules: function (key, values, invalidValues, context) {
+		testRules: function (key, values, invalidValues, options, context) {
 			var i, l, result;
 			context = _.clone(context);
-			context.path = pathBuilder.appendKey(context.path, key);
+			context.path = config.pathFormatter.appendAttribute(context.path, key);
 			for (i = 0, l = this.rules.length; i < l; i++) {
-				result = this.rules[i].test(key, values, context);
+				result = this.rules[i].test(key, values, options, context);
 				invalidValues.push.apply(invalidValues, result);
 			}
 		}
 	});
-
-	// Shared instance
-	var emptyArray = [];
-
+	
 	// Rules
 	// --------------
 
@@ -170,10 +253,8 @@ Backbone.validation = (function () {
 	};
 
 	_.extend(SimpleRule.prototype, {
-		test: function (key, values, context) {
-			// Invoke isValid with value(s) and context, e.g.
-			// - if validating values for attributes "start", invoke isValid(start, context)
-			// - if validating values for attributes "start,end", invoke isValid(start, end, context)
+		test: function (key, values, options, context) {
+			// isValid arguments combine value(s) and context
 			var args = values.slice();
 			args.push(context);
 			var result = this.isValid.apply(this, args);
@@ -199,41 +280,16 @@ Backbone.validation = (function () {
 	};
 
 	_.extend(NestedObjectRule.prototype, {
-		test: function (key, values, context) {
+		test: function (key, values, options, context) {
 			var target = values[0];
 			if (_.isFunction(target.validate)) {
-				var result = target.validate(null, context.options, context);
-				var invalidValues = (_.isObject(result) && _.isArray(result.invalidValues)) ? result.invalidValues : emptyArray;
-				return invalidValues;
+				var result = target.validate(null, options, context);
+				return result ? result.invalidValues : emptyArray;
 			} else {
 				return emptyArray;
 			}
 		}
 	});
-
-
-	// Result of validating a model
-	var Result = function (invalidValues) {
-		this.invalidValues = invalidValues;
-		this.isValid = invalidValues.length === 0;
-	};
-	_.extend(Result.prototype, {
-		// Summary of result suitable for logging / diagnostics
-		getSummary: function () {
-			var message = "";
-			for (var i = 0, l = this.invalidValues.length; i < l; i++) {
-				var error = this.invalidValues[i];
-				message += error.attr + ":\n";
-				for (var j = 0, lj = error.errors.length; j < lj; j++) {
-					message += "- " + error.errors[j].message + "\n";
-				}
-				message += "\n";
-			}
-			return message;
-		}
-	});
-
-
 
 	// RuleBuilder - Used to configure rules
 	// RuleBuilders are immutable. Each rule method returns a new instance with the additional rule.
@@ -264,7 +320,7 @@ Backbone.validation = (function () {
 					return true;
 				}
 				return /^\d*$/.test(value);
-			});
+			}, options, "numeric");
 		},
 		// value cannot be null or undefined
 		range: function (options) {
@@ -370,7 +426,7 @@ Backbone.validation = (function () {
 		},
 		// tests whether a nested model or collection is valid (using its own validate method) 
 		// and includes any invalidValues in the result
-		validate: function (options) {
+		valid: function (options) {
 			var rule = new NestedObjectRule(options, "child-model");
 			return this.addRule(rule);
 		}
@@ -441,31 +497,36 @@ Backbone.validation = (function () {
 
 	var messageBuilder = new MessageBuilder(defaultMessageConfig);
 
+
 	/* --------------------------------------------*/
 	// Model extensions
 
-	var initModelValidator = function (target) {
+	var initValidator = function (target) {
 		if (!target.validator) {
-			var config = {
-				rules: target.rules,
-				instanceRules: target.instanceRules
+			var targetConfig = {
+				rules: target.rules
 			};
-			target.validator = new ModelValidator(config);
+			if (target instanceof Backbone.Model) {
+				target.validator = new ModelValidator(targetConfig);
+			}
+			else if (target instanceof Backbone.Collection) {
+				target.validator = new CollectionValidator(targetConfig);
+			}
 		}
 		return target.validator;
 	};
 
-	// Mixin object used to extend Model with validation functionality
+	// Mixin that extends Model or Collection with validation functionality
 	var modelValidation = {
 		validate: function (attributes, options, context) {
 			attributes || (attributes = this.attributes);
-			var modelValidator = initModelValidator(this);
+			var validator = initValidator(this);
 			context = _.isObject(context) ? _.clone(context) : { path: "" };
 			_.extend(context, {
 				options: options,
 				target: this
 			});
-			var result = modelValidator.validate(attributes, context);
+			var result = validator.validate(attributes, options, context);
 			if (!result.isValid) {
 				return result;
 			}

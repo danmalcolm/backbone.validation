@@ -1,5 +1,4 @@
 ﻿1. DONE Combine OR
-
 rules.any(rules.email(), rules.length({ min: 6, max: 10 }), { message: "Username of 6 to 10 chars or email address" }); - either combine messages or allow message to be defined
 
 2. DONE Combine AND
@@ -21,7 +20,7 @@ var Model = Backbone.Model.extend({
 
 });
 
-5. define rules that apply to multiple attributes, so that we evaluate what we need to test when a 
+5. DONE define rules that apply to multiple attributes, so that we evaluate what we need to test when a 
 different attr changes, e.g. start attribute < end attribute
 - If at least one of the attrs is being set and all attrs are either being validated or are present on model (and valid), 
 then we evaluate rules
@@ -42,10 +41,35 @@ oh yes....
 
 6. Dates
 
-birthday: rules.date("ddMMyyyy|ddMMyyyy")
+birthday: rules.date("ddMMyyyy|dd MMM yyyy")
 
 7. Numbers
 
 rules.number(type:"integer" (decimal), min: 3, max: 4)
 
-6. Global configuration of common options, like trim
+8. Global configuration of common options, like trim
+
+9. Specify alternative path formatters, e.g. ROR form helper style paths, e.g. user[name]
+
+10. Alternative config
+
+11. More detailed demos:
+
+- inline interactive message display
+- nested collections, e.g. order form
+
+12. Improve message generation
+
+13. Consider replacing method chaining rules config:
+
+Alternative 1:
+
+var MyModel = BaseModel.extend({
+	rules: {
+		code: "required integer", // string with delimited list of simple rules
+		ean: { required: {}, length: { exact: 13, message: "giz an EAN" } } // key: rule, value: options
+	}
+});
+
+14. All the no-conflict, global object shenanigans
+

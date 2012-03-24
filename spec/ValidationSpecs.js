@@ -8,8 +8,9 @@ describe("model validation", function () {
 		return new ModelValidator({ rules: rulesConfig });
 	};
 
-	// Model extended with modelValidation mixin
+	// Model and collection extended with modelValidation mixin
 	var BaseModel = Backbone.Model.extend(Backbone.validation.modelValidation);
+	var BaseCollection = Backbone.Collection.extend(Backbone.validation.modelValidation);
 
 
 	describe("model validation extension", function () {
@@ -63,6 +64,32 @@ describe("model validation", function () {
 			model.set({ code: "123" });
 			expect(errored).toBeFalsy();
 		});
+
+	});
+
+	describe("collection validation extension", function () {
+
+		var Model = BaseModel.extend({
+			rules: {
+				code: rules.length({ min: 2, max: 5, message: "Between 2 and 5" })
+			}
+		});
+		var Collection = BaseCollection.extend({
+			model: Model,
+			rules: {}
+		});
+		var collection;
+		beforeEach(function () {
+			collection = new Collection();
+		});
+
+		it("collection should be invalid if it contains invalid models", function () {
+			var model = new Model({ code: "X" });
+			collection.add(model);
+			var result = collection.validate();
+			expect(result).not.toBeUndefined();
+		});
+
 
 	});
 
@@ -144,14 +171,14 @@ describe("model validation", function () {
 
 			var Order = BaseModel.extend({
 				rules: {
-					customer: rules.validate({ message: "Customer should be valid" })
+					customer: rules.valid()
 				}
 			});
 
 			var Customer = BaseModel.extend({
 				rules: {
 					name: rules.length({ min: 2, message: "At least 2" }),
-					address: rules.validate({ message: "Customer's address should be valid"})
+					address: rules.valid()
 				}
 			});
 
@@ -187,6 +214,43 @@ describe("model validation", function () {
 
 		});
 
+		describe("nested collection validation", function () {
+
+			var Order = BaseModel.extend({
+				rules: {
+					lines: rules.valid()
+				}
+			});
+
+			var OrderLine = BaseModel.extend({
+				rules: {
+					productCode: rules.length({ exact: 6, message: "6 digit product code" }),
+					quantity: rules.numeric( { message: "Valid quantity" } )
+				}
+			});
+
+			var OrderLineCollection = BaseCollection.extend({
+				model: OrderLine
+			});
+
+			beforeEach(function () {
+				model = new Order();
+			});
+
+			describe("when setting invalid models within nested collection", function () {
+
+				it("should fail validation with full path to invalid values", function () {
+					var lines = new OrderLineCollection([ { productCode: "ZZZ", quantity: 3 },	
+						{ productCode: "123456", quantity: "X" } ]);
+					expect({ lines: lines }).toBeInvalid([
+						{ attr: "productCode", path: "lines[0].productCode", errors: [{ message: "6 digit product code", key: "string-length"}] },
+						{ attr: "quantity", path: "lines[1].quantity", errors: [{ message: "Valid quantity", key: "numeric"}] }
+					]);
+				});
+
+			});
+		});
+		
 		// Rules that validate single value
 		describe("when testing rules applied to single attribute values", function () {
 
@@ -388,7 +452,7 @@ describe("model validation", function () {
 
 			this.addMatchers({
 				toBeValid: function () {
-					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model(), path: "" });
+					var result = validator.validate({ name: this.actual }, {}, { target: new Backbone.Model(), path: "" });
 					this.message = function () {
 						return "Expected model to be valid but result was as follows: \n" + f(result);
 					};
@@ -396,7 +460,7 @@ describe("model validation", function () {
 
 				},
 				toBeInvalid: function (expectedMessages) {
-					var result = validator.validate({ name: this.actual }, { target: new Backbone.Model(), path: "" });
+					var result = validator.validate({ name: this.actual }, {}, { target: new Backbone.Model(), path: "" });
 					this.message = function () {
 						var message = "Expected model to be invalid";
 						if (expectedMessages) {
