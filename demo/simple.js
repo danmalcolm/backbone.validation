@@ -216,18 +216,9 @@
 				$el.find(".validation-message").remove();
 			},
 			display: function ($el, path, info) {
-				var $input = $el.find(':input[name=' + path + ']');
-				var $info = $(info);
-				//$info.hide();
-				$el.append($info);
-				$info.position({
-					of: $input,
-					my: "left top",
-					at: "right top",
-					offset: "10px 0px"
-				});
-
-				return $input.length > 0;
+				var $container = $el.find(':input[name=' + path + ']').parents("div.field:first");
+				$container.prepend(info);
+				return $container.length > 0;
 			}
 		}
 	};
