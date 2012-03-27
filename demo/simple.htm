@@ -4,6 +4,24 @@
 	<title>backbone.validation - simple model validation demo</title>
 	<link type="text/css" href="css/ui-lightness/jquery-ui-1.8.18.custom.css" rel="stylesheet">
 	<style type="text/css">
+		body
+		{
+			font-family: sans-serif;
+		}
+		h1
+		{
+			background-color: skyblue;
+			color: #fff;
+			padding: 10px;
+		}
+		h2
+		{
+			background-color: skyblue;
+			color: #fff;
+			padding: 10px;
+		}
+		
+		
 		.formPanel
 		{
 			-moz-border-radius: 15px;
@@ -16,7 +34,7 @@
 			-webkit-box-shadow: 5px 5px 5px #ccc;
 			box-shadow: 5px 5px 5px #ccc;
 		}
-		.formPanel h1
+		.formPanel h3
 		{
 			margin-top: 0px;
 		}
@@ -28,18 +46,42 @@
 			display: none;
 			margin: 0.5em;
 		}
+		.formPanel div.field
+		{
+			margin-top: 20px;
+			clear: both;
+		}
+		.formPanel div.buttons
+		{
+			margin-top: 40px;
+		}
 		label
 		{
 			display: block;
 			width: 100px;
 			float: left;
 		}
+		div.validation-message
+		{
+			width: 300px;
+			font-size: smaller;
+		}
+		div.validation-message ul {
+			margin: 0px;
+		}
+		form [type=submit] {
+			font-size: 20px;
+			padding: 10px;
+		}
 	</style>
 </head>
 <body>
-	<h1>Backbone validation examples</h1>
-	<h2>Simple</h2>
-	<p>Validates entire model on submit</p>
+	<h1>
+		Backbone validation examples</h1>
+	<h2>
+		Simple</h2>
+	<p>
+		Validates entire model on submit</p>
 	<div id="simple" class="formPanel">
 		<h3>
 			New User
@@ -47,21 +89,33 @@
 		<p>
 			Enter your details below</p>
 		<form id="userForm" method="post" action="/users">
-			<div class="errors" style="display: none">
-				<strong>Errors found</strong>
-				<div class="messages"></div>
+		<div class="errors" style="display: none">
+			<strong>Errors found</strong>
+			<div class="messages">
 			</div>
+		</div>
+		<div class="field">
 			<label for="email">
-				Email</label><input name="email" />
-			<br />
+				Email</label><input name="email" value="" />
+		</div>
+		<div class="field">
 			<label for="password">
-				Password</label><input name="password" />
-			<br />
-			<input type="submit" value="Register" title="Register using the values supplied" />
+				Password</label><input name="password" value="" />
+		</div>
+		<div class="field">
+			<label for="agree">
+				I agree to everything</label><input name="agreeTerms" type="checkbox" />
+		</div>
+		<div class="buttons">
+			<input id="submit3" type="submit" value="Register" title="Register using the values supplied" />
+		</div>
 		</form>
 	</div>
-	<h2>Interactive</h2>
-	<p>Validates model as it is updated. Excludes errors for new attributes that user hasn't attempted to edit yet</p>
+	<h2>
+		Interactive</h2>
+	<p>
+		Validates model as it is updated. Excludes errors for new attributes that user hasn't
+		attempted to edit yet</p>
 	<div id="interactive" class="formPanel">
 		<h3>
 			New User
@@ -69,20 +123,57 @@
 		<p>
 			Enter your details below</p>
 		<form id="Form1" method="post" action="/users">
-			<div class="errors" style="display: none">
-				<strong>Errors found</strong>
-				<div class="messages"></div>
+		<div class="errors" style="display: none">
+			<strong>Errors found</strong>
+			<div class="messages">
 			</div>
+		</div>
+		<div class="field">
 			<label for="email">
 				Email</label><input name="email" value="" />
-			<br />
+		</div>
+		<div class="field">
 			<label for="password">
 				Password</label><input name="password" value="" />
-			<br />
+		</div>
+		<div class="field">
+			<label for="agree">
+				I agree to everything</label><input name="agreeTerms" type="checkbox" />
+		</div>
+		<div class="buttons">
 			<input id="submit1" type="submit" value="Register" title="Register using the values supplied" />
+		</div>
 		</form>
 	</div>
-	
+	<h2>
+		Inline</h2>
+	<p>
+		Interactive validation as above, but errors are shown inline next to the relevant
+		form fields</p>
+	<div id="inline" class="formPanel">
+		<h3>
+			New User
+		</h3>
+		<p>
+			Enter your details below</p>
+		<form id="Form2" method="post" action="/users">
+		<div class="field">
+			<label for="email">
+				Email</label><input name="email" value="" />
+		</div>
+		<div class="field">
+			<label for="password">
+				Password</label><input name="password" value="" />
+		</div>
+		<div class="field">
+			<label for="agree">
+				I agree to everything</label><input name="agreeTerms" type="checkbox" />
+		</div>
+		<div class="buttons">
+			<input id="submit2" type="submit" value="Register" title="Register using the values supplied" />
+		</div>
+		</form>
+	</div>
 	<!-- Templates -->
 	<script type="text/template" id="validation-messages">
 		<ul>
@@ -104,8 +195,22 @@
 			});
 			%>		
 		</ul>
-     </script>
-
+	</script>
+	<script type="text/template" id="inline-invalid-value-info">
+		<div class="ui-widget validation-message" data-path="<%= invalidValue.path %>" >
+			<div class="ui-state-error ui-corner-all" > 
+				<ul >
+				<%
+				_.each(invalidValue.errors, function(error) {
+				%>
+					<li><%= error.message %></li>
+				<%
+				});
+				%>			
+				</ul>
+			</div>
+		</div>     
+	</script>
 </body>
 <script type="text/javascript" src="../lib/jquery-1.7.1.js"></script>
 <script type="text/javascript" src="js/jquery-ui-1.8.18.custom.min.js"></script>

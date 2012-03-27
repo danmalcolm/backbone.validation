@@ -341,6 +341,12 @@ Backbone.validation = (function () {
 				return !isNullOrUndefined(value) && !_.isNull(value.toString().match(/\S/));
 			}, options, "string-not-blank");
 		},
+		// value must be a truthy value
+		truthy: function (options) {
+			return this.addSimpleRule(function (value) {
+				return value ? true : false;
+			}, options, "true");
+		},
 		// string value of specified min and max length
 		// exact: exact string length
 		// min: minimum string length (inclusive) 
