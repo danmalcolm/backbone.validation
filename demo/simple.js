@@ -6,16 +6,20 @@
 	var Model = Backbone.Model.extend(Backbone.validation.modelValidation);
 
 	var User = Model.extend({
+
+		defaults: {
+			agreeTerms: false
+		},
+
 		// Define validation rules
 		rules: {
 			email: rules.email({ trim: true }),
 			password: rules.length({ trim: true, min: 6, max: 20, message: "Please enter a value between 6 and 20 characters" }),
 			agreeTerms: rules.truthy({ message: "Please agree to everything" })
 		},
-		// Pretend to save to server
+		// Pretend to save to server resulting in generated id
 		sync: function (method, model, options) {
-			var resp = { id: 1234 };
-			_.extend(resp, this.attributes);
+			var resp = _.extend({ id: 1234 }, this.attributes);
 			options.success(resp);
 		}
 	});
@@ -91,7 +95,8 @@
 	// put a loaf of bread in your shopping trolley.
 
 	// Note - this form tracking functionality will probably end up being extracted
-	// into a helper class within the core library
+	// into a helper class within the core library. Just trying to work out what we
+	// need.
 	var InteractiveValidationView = Backbone.View.extend({
 		initialize: function () {
 			this.errorsView = new ErrorsView({ el: this.$(".errors") });
@@ -134,7 +139,6 @@
 			if (!result) {
 				// Model.validate returns nothing if there are no errors
 				this.errorsView.clear();
-				this.enableSave(true);
 				return true;
 			} else {
 				var invalidValues = result.invalidValues;
@@ -144,16 +148,7 @@
 					}, this);
 				}
 				this.errorsView.update(invalidValues);
-				this.enableSave(false);
 				return false;
-			}
-		},
-		enableSave: function (enabled) {
-			if (enabled) {
-				this.$("input:submit").removeAttr("disabled").attr("title", "Register using the values supplied");
-			}
-			else {
-				this.$("input:submit").attr("disabled", "disabled").attr("title", "Please enter all the required information before submitting the form");
 			}
 		},
 		save: function (e) {
@@ -169,10 +164,6 @@
 					}
 				});
 			}
-		},
-		render: function () {
-			this.enableSave(this.model.isValid());
-			return this;
 		}
 	});
 
@@ -189,7 +180,7 @@
 		// of validation messages by putting placeholder elements in the form
 		placeholder: {
 			reset: function ($el) {
-				$el.find("[data-validationmessagetype]").remove();
+				$el.find("[data-validationmessagetype=placeholder]").hide();
 			},
 			display: function ($el, path, info) {
 				var $placeholder = $el.find('[data-validationmessagetype=placeholder][data-validationmessagepath=' + path + ']');
@@ -201,7 +192,7 @@
 		// is valid
 		custom: {
 			reset: function ($el) {
-				$el.find("[data-validationmessagetype]").remove();
+				$el.find("[data-validationmessagetype=custom]").hide();
 			},
 			display: function ($el, path, info) {
 				var $element = $el.find('[data-validationmessagetype=custom][data-validationmessagepath=' + path + ']');
@@ -225,6 +216,7 @@
 
 	var ValidationDisplayHelper = function ($form) {
 		this.$form = $form;
+		this.reset();
 	};
 
 	_.extend(ValidationDisplayHelper.prototype, {
@@ -242,6 +234,9 @@
 					_.any(this.handlers, function (h) { return h.display(this.$form, invalidValue.path, info); }, this);
 				}
 			}
+		},
+		reset: function () {
+			this.update();
 		}
 	});
 
@@ -287,7 +282,6 @@
 			if (!result) {
 				// Model.validate returns nothing if there are no errors
 				this.helper.update();
-				this.enableSave(true);
 				return true;
 			} else {
 				var invalidValues = result.invalidValues;
@@ -297,16 +291,7 @@
 					}, this);
 				}
 				this.helper.update(invalidValues);
-				this.enableSave(false);
 				return false;
-			}
-		},
-		enableSave: function (enabled) {
-			if (enabled) {
-				this.$("input:submit").removeAttr("disabled").attr("title", "Register using the values supplied");
-			}
-			else {
-				this.$("input:submit").attr("disabled", "disabled").attr("title", "Please enter all the required information before submitting the form");
 			}
 		},
 		save: function (e) {
@@ -317,15 +302,11 @@
 				var self = this;
 				this.model.save(null, {
 					success: function (model) {
-						self.errorsView.clear();
+						self.helper.reset();
 						alert("Well done, you have registered!" + JSON.stringify(model.attributes));
 					}
 				});
 			}
-		},
-		render: function () {
-			this.enableSave(this.model.isValid());
-			return this;
 		}
 	});
 

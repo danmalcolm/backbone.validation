@@ -51,6 +51,14 @@
 			margin-top: 20px;
 			clear: both;
 		}
+		.formPanel div.custom-validation-message
+		{
+			margin-top: 20px;
+			clear: both;
+			background-color: orange;
+			color: #fff;
+	       padding:15px;
+		}
 		.formPanel div.buttons
 		{
 			margin-top: 40px;
@@ -66,10 +74,12 @@
 			width: 300px;
 			font-size: smaller;
 		}
-		div.validation-message ul {
+		div.validation-message ul
+		{
 			margin: 0px;
 		}
-		form [type=submit] {
+		form [type=submit]
+		{
 			font-size: 20px;
 			padding: 10px;
 		}
@@ -139,6 +149,7 @@
 		<div class="field">
 			<label for="agree">
 				I agree to everything</label><input name="agreeTerms" type="checkbox" />
+	
 		</div>
 		<div class="buttons">
 			<input id="submit1" type="submit" value="Register" title="Register using the values supplied" />
@@ -149,7 +160,7 @@
 		Inline</h2>
 	<p>
 		Interactive validation as above, but errors are shown inline next to the relevant
-		form fields</p>
+		form fields. The agree terms message is an example of a custom message.</p>
 	<div id="inline" class="formPanel">
 		<h3>
 			New User
@@ -159,12 +170,15 @@
 		<form id="Form2" method="post" action="/users">
 		<div class="field">
 			<label for="email">
-				Email</label><input name="email" value="" />
+				Email</label><input name="email" type="text" value="" />
 		</div>
 		<div class="field">
 			<label for="password">
-				Password</label><input name="password" value="" />
+				Password</label><input name="password" type="password" value="" />
 		</div>
+		<div data-validationmessagetype="custom" data-validationmessagepath="agreeTerms" class="custom-validation-message">
+			Why you no agree terms?</div>
+
 		<div class="field">
 			<label for="agree">
 				I agree to everything</label><input name="agreeTerms" type="checkbox" />
