@@ -204,11 +204,14 @@
 		// a consistent position relative to the form element
 		standard: {
 			reset: function ($el) {
-				$el.find(".validation-message").remove();
+				var $containers = $el.find('div.field');
+				$containers.removeClass('warning');
+				$containers.find('.inline-info').empty();
 			},
 			display: function ($el, path, info) {
 				var $container = $el.find(':input[name=' + path + ']').parents("div.field:first");
-				$container.prepend(info);
+				$container.addClass('warning');
+				$container.find('.inline-info').html(info);
 				return $container.length > 0;
 			}
 		}
